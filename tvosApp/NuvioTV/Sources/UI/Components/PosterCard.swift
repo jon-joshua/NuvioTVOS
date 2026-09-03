@@ -70,9 +70,6 @@ enum AppCardStyle {
         CardCornerRadiusOption.from(rawValue: rawValue).scale
     }
 
-
-
-
     static func episodeCornerRadius(for rawValue: String?) -> CGFloat {
         let opt = CardCornerRadiusOption.from(rawValue: rawValue)
         switch opt {
@@ -81,17 +78,6 @@ enum AppCardStyle {
         case .classic: return 24
         case .rounded: return 30
         case .pill: return 38
-        }
-    }
-
-    static func badgeCornerRadius(for rawValue: String?, base: CGFloat = 10) -> CGFloat {
-        let opt = CardCornerRadiusOption.from(rawValue: rawValue)
-        switch opt {
-        case .sharp: return 0
-        case .subtle: return max(4, base * 0.6)
-        case .classic: return base
-        case .rounded: return base * 1.3
-        case .pill: return base * 1.8
         }
     }
 }
@@ -697,43 +683,6 @@ private struct TrailerPreviewPlayer: View {
 #endif
 
 #if canImport(UIKit)
-/// Liquid Glass surface shared by collection folder covers and loading cards, so
-/// the two cannot drift apart. tvOS 26+ uses real `glassEffect`; older systems
-/// get frosted material.
-struct LiquidGlassSurface: ViewModifier {
-    let cornerRadius: CGFloat
-    var prominent: Bool = false
-
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-    }
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        #if os(tvOS)
-        if #available(tvOS 26.0, *) {
-            content
-                .background(
-                    Color.white.opacity(prominent ? 0.16 : 0.08),
-                    in: shape
-                )
-                .glassEffect(.regular, in: shape)
-        } else {
-            content
-                .background(.ultraThinMaterial, in: shape)
-                .background(
-                    Color.white.opacity(prominent ? 0.16 : 0.08),
-                    in: shape
-                )
-        }
-        #else
-        content
-            .background(.ultraThinMaterial, in: shape)
-            .background(Color.white.opacity(prominent ? 0.16 : 0.08), in: shape)
-        #endif
-    }
-}
-
 /// Liquid Glass surface modifier for card shapes (posters, landscape cards, episode tiles).
 /// Uses native frosted glass only while focused; unfocused cards retain the
 /// specular highlight with a lightweight translucent fill.
@@ -798,68 +747,9 @@ struct LiquidGlassCardModifier: ViewModifier {
     }
 }
 
-/// Frosted liquid glass pill/badge modifier for metadata tags, episode chips, and progress overlays.
-struct LiquidGlassBadgeModifier: ViewModifier {
-    let cornerRadius: CGFloat
-    var isFocused: Bool = true
-
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-    }
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if isFocused {
-            #if os(tvOS)
-            if #available(tvOS 26.0, *) {
-                content
-                    .glassEffect(.regular, in: shape)
-                    .overlay(
-                        shape.strokeBorder(
-                            LinearGradient(
-                                colors: [Color.white.opacity(0.40), Color.white.opacity(0.12)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            lineWidth: 1
-                        )
-                    )
-            } else {
-                content
-                    .background(.ultraThinMaterial, in: shape)
-                    .overlay(
-                        shape.strokeBorder(Color.white.opacity(0.24), lineWidth: 1)
-                    )
-            }
-            #else
-            content
-                .background(.ultraThinMaterial, in: shape)
-                .overlay(
-                    shape.strokeBorder(Color.white.opacity(0.24), lineWidth: 1)
-                )
-            #endif
-        } else {
-            content.overlay(
-                shape.strokeBorder(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.28), Color.white.opacity(0.08)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-            )
-        }
-    }
-}
-
 extension View {
     func liquidGlassCard(cornerRadius: CGFloat, isFocused: Bool = false, isEnabled: Bool = true) -> some View {
         self.modifier(LiquidGlassCardModifier(cornerRadius: cornerRadius, isFocused: isFocused, isEnabled: isEnabled))
-    }
-
-    func liquidGlassBadge(cornerRadius: CGFloat, isFocused: Bool = true) -> some View {
-        self.modifier(LiquidGlassBadgeModifier(cornerRadius: cornerRadius, isFocused: isFocused))
     }
 }
 
@@ -867,8 +757,7 @@ extension View {
 ///
 /// This is the one place a spinner still belongs: the row's catalog request is
 /// genuinely outstanding and will either answer or fail, unlike a single poster
-/// URL that can hang forever with nothing left to report. Uses the same
-/// lightweight card modifier as loaded posters so loading rows remain cheap.
+/// URL that can hang forever with nothing left to report.
 struct LoadingPosterCard: View {
     let width: CGFloat
     let height: CGFloat
