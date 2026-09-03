@@ -180,7 +180,6 @@ struct SearchView: View {
                         height: SearchGridMetrics.posterHeight,
                         externalFocus: $focusedResultID,
                         retainFocusAppearance: overlayRestoreResultID == item.id,
-                        onLongPress: onLongPress.map { cb in { cb(item) } },
                         forceShowLabels: true
                     ) {
                         overlayRestoreResultID = item.id

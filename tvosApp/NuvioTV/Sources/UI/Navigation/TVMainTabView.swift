@@ -67,6 +67,10 @@ struct TVMainTabView: View {
     var body: some View {
         ZStack(alignment: .leading) {
             content
+                // Screens cross-fade: a new identity per tab so SwiftUI transitions
+                // rather than swapping in place.
+                .id(selectedTab)
+                .transition(.opacity)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // One focus section for the whole page: Up/Down stay inside it,
                 // only Left enters the rail, and Right from the rail lands on the
@@ -76,7 +80,8 @@ struct TVMainTabView: View {
                 // slides right by the rail's width while it is open. An offset is a
                 // transform, not a layout pass, so nothing is re-laid out.
                 .offset(x: railIsFocused ? NavigationRailMetrics.openShift : 0)
-                .animation(.spring(response: 0.34, dampingFraction: 0.86), value: railIsFocused)
+                // No slide when the destination is Search: it fades in instead.
+                .animation(selectedTab == .search ? nil : NuvioMotion.drawer, value: railIsFocused)
                 .environment(\.navigationRailShift, railIsFocused ? NavigationRailMetrics.openShift : 0)
             if selectedTab != .search {
                 NavigationRail(
@@ -91,9 +96,9 @@ struct TVMainTabView: View {
                     .transition(.move(edge: .leading))
             }
         }
+        .animation(NuvioMotion.screen, value: selectedTab)
         // Menu: from content, open the rail. On the rail it is left unhandled so
         // tvOS exits the app: two presses from anywhere, like YouTube and Netflix.
-        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: selectedTab == .search)
         .onExitCommand(perform: railIsFocused ? nil : handleMenu)
         .background(Color.nuvioBackground(amoled: amoled, body: bodyColor).ignoresSafeArea())
         .sheet(isPresented: $showingReauthSheet) {

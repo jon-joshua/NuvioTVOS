@@ -216,7 +216,11 @@ struct PosterCard: View {
     var body: some View {
         #if os(tvOS)
         Button(action: onClick) {
-            posterContent
+            // Equality boundary owned by the card itself: parents rebuild this
+            // value with fresh closures on every focus move, so without it every
+            // realized card in the row re-ran its body per remote press.
+            PosterCardRenderGate(key: renderKey) { posterContent }
+                .equatable()
         }
         .buttonStyle(PosterCardButtonStyle())
         .disabled(!allowsFocus)
@@ -235,9 +239,9 @@ struct PosterCard: View {
             .onChange(of: isFocused) { _, focused in
                 if focused {
                     onFocus?(meta)
-                    didFinishTrailerPreview = false
+                    if didFinishTrailerPreview { didFinishTrailerPreview = false }
                 } else {
-                    landscapePreloadArmed = false
+                    if landscapePreloadArmed { landscapePreloadArmed = false }
                     cancelTrailerPreview()
                     onBlur?(meta)
                 }
@@ -327,7 +331,11 @@ struct PosterCard: View {
             // trailer is ready to draw, avoiding a black frame on slow links.
             .opacity(isTrailerPreviewVisible ? 0 : 1)
             .overlay {
-                if isFocused && trailersEnabled && !isContinueOrUpcomingCard && !didFinishTrailerPreview {
+                // Mount only once focus has settled (the same 300 ms arm as the
+                // landscape preload). Activation is always at least a second
+                // away, so resolution still finishes ahead of playback; cards
+                // merely passed over never allocate a player or hit the network.
+                if isFocused && landscapePreloadArmed && trailersEnabled && !isContinueOrUpcomingCard && !didFinishTrailerPreview {
                     TrailerPreviewPlayer(
                         meta: meta,
                         isActive: isTrailerPreviewActive,
@@ -694,15 +702,32 @@ struct PosterCard: View {
         "\(isFocused)\u{1f}\(effectiveLandscape)\u{1f}\(trailersEnabled)\u{1f}\(trailerDelay)\u{1f}\(isContinueOrUpcomingCard)"
     }
 
+    /// Everything `posterContent` reads. Keep it complete: the render gate reuses
+    /// the retained poster subtree whenever this key is unchanged, so a value
+    /// missing here would be drawn stale.
+    private var renderKey: PosterCardRenderKey {
+        PosterCardRenderKey(
+            base: staticKey,
+            isFocused: isFocused,
+            landscapeArtworkPrepared: landscapeArtworkPrepared,
+            landscapePreloadArmed: landscapePreloadArmed,
+            cardCornerRadiusSetting: cardCornerRadiusSetting,
+            liquidGlassCards: liquidGlassCards,
+            trailersEnabled: trailersEnabled,
+            trailerDelay: trailerDelay,
+            isTrailerPreviewActive: isTrailerPreviewActive,
+            isTrailerPreviewReady: isTrailerPreviewReady,
+            didFinishTrailerPreview: didFinishTrailerPreview
+        )
+    }
+
     private var isTrailerPreviewVisible: Bool {
         !isContinueOrUpcomingCard && isTrailerPreviewActive && isTrailerPreviewReady && !didFinishTrailerPreview
     }
 
     @MainActor
     private func activateTrailerPreviewAfterDelay() async {
-        isTrailerPreviewActive = false
-        isTrailerPreviewReady = false
-        didFinishTrailerPreview = false
+        resetTrailerPreviewState()
         guard isFocused, effectiveLandscape, trailersEnabled, !isContinueOrUpcomingCard else { return }
 
         let delay = max(1, trailerDelay)
@@ -715,9 +740,16 @@ struct PosterCard: View {
         isTrailerPreviewActive = true
     }
 
+    // `@State` setters invalidate the view even when the value is unchanged, and
+    // these run on every focus transition, so only write what actually differs.
+    private func resetTrailerPreviewState() {
+        cancelTrailerPreview()
+        if didFinishTrailerPreview { didFinishTrailerPreview = false }
+    }
+
     private func cancelTrailerPreview() {
-        isTrailerPreviewActive = false
-        isTrailerPreviewReady = false
+        if isTrailerPreviewActive { isTrailerPreviewActive = false }
+        if isTrailerPreviewReady { isTrailerPreviewReady = false }
     }
 
     private func finishTrailerPreview() {
@@ -800,6 +832,86 @@ struct PosterCard: View {
     #endif
 }
 
+/// Every call-site value the card draws, with closures reduced to presence.
+/// Single source of truth for `PosterCard.==` and for the in-card render gate,
+/// so there is one list to keep complete. Numeric and optional-text inputs are
+/// stringified so the key does not depend on their exact model types.
+struct PosterCardStaticKey: Equatable {
+    let metaID: String
+    let metaName: String
+    let metaType: String
+    let posterURL: String?
+    let backgroundURL: String?
+    let logoURL: String?
+    let imdbID: String?
+    let tmdbID: String?
+    let year: String?
+    let trailerYtIds: [String]?
+    let isLandscape: Bool
+    let continueProgress: String?
+    let continueRemainingText: String?
+    let continueEpisodeText: String?
+    let continueEpisodeTitleText: String?
+    let continueEpisodeArtworkURL: String?
+    let continueIsUpNext: Bool
+    let continueUpNextBadgeText: String?
+    let showsWatchedBadge: Bool
+    let isWatched: Bool?
+    let shouldRequestInitialFocus: Bool
+    let externalFocusValue: String?
+    let hasOnLongPress: Bool
+    let hasOnOpenDetails: Bool
+    let hasOnPlayManually: Bool
+    let hasOnStartFromBeginning: Bool
+    let hasOnRemoveFromContinueWatching: Bool
+    let layoutMode: String
+    let showPosterLabels: Bool
+    let smoothFocusAnimations: Bool
+    let focusHighlighterEnabled: Bool
+    let retainFocusAppearance: Bool
+    let allowsFocus: Bool
+}
+
+extension PosterCard {
+    var staticKey: PosterCardStaticKey {
+        PosterCardStaticKey(
+            metaID: meta.id,
+            metaName: meta.name,
+            metaType: meta.type,
+            posterURL: meta.posterUrl,
+            backgroundURL: meta.backgroundUrl,
+            logoURL: meta.logoUrl,
+            imdbID: meta.imdbId,
+            tmdbID: meta.tmdbId.map { "\($0)" },
+            year: meta.year.map { "\($0)" },
+            trailerYtIds: meta.trailerYtIds,
+            isLandscape: isLandscape,
+            continueProgress: continueProgress.map { "\($0)" },
+            continueRemainingText: continueRemainingText.map { "\($0)" },
+            continueEpisodeText: continueEpisodeText.map { "\($0)" },
+            continueEpisodeTitleText: continueEpisodeTitleText.map { "\($0)" },
+            continueEpisodeArtworkURL: continueEpisodeArtworkURL.map { "\($0)" },
+            continueIsUpNext: continueIsUpNext,
+            continueUpNextBadgeText: continueUpNextBadgeText.map { "\($0)" },
+            showsWatchedBadge: showsWatchedBadge,
+            isWatched: isWatched,
+            shouldRequestInitialFocus: shouldRequestInitialFocus,
+            externalFocusValue: externalFocusValue,
+            hasOnLongPress: onLongPress != nil,
+            hasOnOpenDetails: onOpenDetails != nil,
+            hasOnPlayManually: onPlayManually != nil,
+            hasOnStartFromBeginning: onStartFromBeginning != nil,
+            hasOnRemoveFromContinueWatching: onRemoveFromContinueWatching != nil,
+            layoutMode: layoutMode,
+            showPosterLabels: showPosterLabels,
+            smoothFocusAnimations: smoothFocusAnimations,
+            focusHighlighterEnabled: focusHighlighterEnabled,
+            retainFocusAppearance: retainFocusAppearance,
+            allowsFocus: allowsFocus
+        )
+    }
+}
+
 // Home's vertical offset animates at the parent level. Without an equality
 // boundary, every parent focus update rebuilds the full poster subtree for
 // every mounted row, even though almost every card is unchanged. Keep dynamic
@@ -807,40 +919,50 @@ struct PosterCard: View {
 // value that affects the card's rendering or focus eligibility changes.
 extension PosterCard: Equatable {
     static func == (lhs: PosterCard, rhs: PosterCard) -> Bool {
-        lhs.meta.id == rhs.meta.id
-            && lhs.meta.name == rhs.meta.name
-            && lhs.meta.posterUrl == rhs.meta.posterUrl
-            && lhs.meta.backgroundUrl == rhs.meta.backgroundUrl
-            && lhs.meta.logoUrl == rhs.meta.logoUrl
-            && lhs.meta.imdbId == rhs.meta.imdbId
-            && lhs.meta.tmdbId == rhs.meta.tmdbId
-            && lhs.meta.type == rhs.meta.type
-            && lhs.meta.trailerYtIds == rhs.meta.trailerYtIds
-            && lhs.isLandscape == rhs.isLandscape
-            && lhs.continueProgress == rhs.continueProgress
-            && lhs.continueRemainingText == rhs.continueRemainingText
-            && lhs.continueEpisodeText == rhs.continueEpisodeText
-            && lhs.continueEpisodeTitleText == rhs.continueEpisodeTitleText
-            && lhs.continueEpisodeArtworkURL == rhs.continueEpisodeArtworkURL
-            && lhs.continueIsUpNext == rhs.continueIsUpNext
-            && lhs.continueUpNextBadgeText == rhs.continueUpNextBadgeText
-            && lhs.showsWatchedBadge == rhs.showsWatchedBadge
-            && lhs.shouldRequestInitialFocus == rhs.shouldRequestInitialFocus
-            && lhs.externalFocusValue == rhs.externalFocusValue
-            && (lhs.onLongPress != nil) == (rhs.onLongPress != nil)
-            && (lhs.onOpenDetails != nil) == (rhs.onOpenDetails != nil)
-            && (lhs.onPlayManually != nil) == (rhs.onPlayManually != nil)
-            && (lhs.onStartFromBeginning != nil) == (rhs.onStartFromBeginning != nil)
-            && (lhs.onRemoveFromContinueWatching != nil) == (rhs.onRemoveFromContinueWatching != nil)
-            && lhs.layoutMode == rhs.layoutMode
-            && lhs.showPosterLabels == rhs.showPosterLabels
-            && lhs.smoothFocusAnimations == rhs.smoothFocusAnimations
-            && lhs.focusHighlighterEnabled == rhs.focusHighlighterEnabled
-            && lhs.retainFocusAppearance == rhs.retainFocusAppearance
-            && lhs.allowsFocus == rhs.allowsFocus
-            && lhs.isWatched == rhs.isWatched
+        lhs.staticKey == rhs.staticKey
     }
 }
+
+#if os(tvOS)
+/// The static key plus every piece of card-owned state `posterContent` reads.
+/// Anything the content draws must appear here, or the gate will reuse a stale
+/// subtree when that value changes.
+struct PosterCardRenderKey: Equatable {
+    let base: PosterCardStaticKey
+    let isFocused: Bool
+    let landscapeArtworkPrepared: Bool
+    let landscapePreloadArmed: Bool
+    let cardCornerRadiusSetting: String
+    let liquidGlassCards: Bool
+    let trailersEnabled: Bool
+    let trailerDelay: Int
+    let isTrailerPreviewActive: Bool
+    let isTrailerPreviewReady: Bool
+    let didFinishTrailerPreview: Bool
+}
+
+/// Equality boundary that ignores its content closure. With `.equatable()`,
+/// SwiftUI compares `key` instead of structurally comparing the closure, so a
+/// parent update that changes nothing the card draws leaves the whole poster
+/// subtree (artwork, overlays, badges, trailer) untouched.
+struct PosterCardRenderGate<Content: View>: View, Equatable {
+    let key: PosterCardRenderKey
+    private let content: () -> Content
+
+    init(key: PosterCardRenderKey, @ViewBuilder content: @escaping () -> Content) {
+        self.key = key
+        self.content = content
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.key == rhs.key
+    }
+
+    var body: some View {
+        content()
+    }
+}
+#endif
 
 #if os(tvOS)
 final class TrailerPlayerLayerView: UIView {
@@ -958,7 +1080,6 @@ private struct TrailerPreviewPlayer: View {
     @State private var player = AVPlayer()
     @State private var isRenderReady = false
     @AppStorage(SettingsKey.trailerPreviewSound) private var trailerPreviewSound = false
-    private let resolver = YouTubeTrailerResolver()
 
     var body: some View {
         TrailerPlayerSurface(player: player) {
@@ -1014,8 +1135,10 @@ private struct TrailerPreviewPlayer: View {
     private func startPreview() async {
         isRenderReady = false
 
+        // The shared resolver owns the 30-minute preview cache; a per-card
+        // instance guaranteed a miss on every mount.
         guard let youtubeVideoId = await YouTubeTrailerResolver.preferredTrailerYouTubeId(for: meta),
-              let playbackSource = await resolver.resolvePreview(
+              let playbackSource = await YouTubeTrailerResolver.shared.resolvePreview(
                   youtubeVideoId: youtubeVideoId,
                   title: meta.name,
                   year: meta.year.map(String.init)
@@ -1056,169 +1179,6 @@ private struct TrailerPreviewPlayer: View {
     }
 }
 
-/// Poster tile for the full-width grids — Search results and the Grid Home
-/// previews — so both read as one card: art that lifts and outlines on focus,
-/// plus the two-line title/subtitle pair when poster labels are on.
-///
-/// Distinct from `PosterCard`, which is the row-strip card: that one also has to
-/// expand to landscape artwork, carry Continue Watching progress, and stay
-/// cheap while a whole strip of it is mounted, so it deliberately stays flatter.
-struct PosterGridCard: View {
-    let meta: NuvioMeta
-    var width: CGFloat = 210
-    var height: CGFloat = 315
-    var externalFocus: FocusState<String?>.Binding? = nil
-    /// Defaults to `meta.id`. Home passes a section-scoped key, since the same
-    /// title can appear in more than one catalog.
-    var focusValue: String? = nil
-    var retainFocusAppearance = false
-    /// Pre-resolved watched state; `nil` lets the badge look it up itself.
-    var isWatched: Bool? = nil
-    var shouldRequestInitialFocus = false
-    var onInitialFocusRequested: (() -> Void)? = nil
-    var onFocus: ((NuvioMeta) -> Void)? = nil
-    var onLongPress: (() -> Void)? = nil
-    /// Forces the title/subtitle caption to render regardless of the user's
-    /// global poster-labels setting (used by Search's Netflix-style grid).
-    var forceShowLabels = false
-    /// Optional directional-command hook installed on the focusable Button
-    /// itself. Container-level handlers can miss commands consumed by tvOS's
-    /// focus engine before they bubble out of a poster.
-    var onMove: ((MoveCommandDirection) -> Void)? = nil
-    let action: () -> Void
-
-    @FocusState private var focused: Bool
-    @State private var didRequestInitialFocus = false
-    @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
-    @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
-
-    private var showsFocusedAppearance: Bool { focused || retainFocusAppearance }
-
-    private var cardCornerRadius: CGFloat {
-        AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16)
-    }
-
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-    }
-
-    var body: some View {
-        let cardContent = VStack(alignment: .leading, spacing: 12) {
-            CachedPosterArtwork(
-                urlString: meta.posterUrl,
-                preloadURLString: nil,
-                width: width,
-                height: height,
-                maximumWidth: width,
-                minimumSwapDelay: 0,
-                onPreloadFinished: {}
-            ) {
-                placeholder
-            }
-            .frame(width: width, height: height)
-            .clipShape(shape)
-            .modifier(
-                LiquidGlassCardModifier(
-                    cornerRadius: cardCornerRadius,
-                    isFocused: showsFocusedAppearance,
-                    isEnabled: liquidGlassCards
-                )
-            )
-            .overlay(alignment: .topTrailing) {
-                if let isWatched {
-                    if isWatched { WatchedCheckmarkIcon() }
-                } else {
-                    WatchedCheckmarkBadge(meta: meta)
-                }
-            }
-            .overlay(
-                shape.stroke(
-                    showsFocusedAppearance ? AppFocusOutline.color : .clear,
-                    lineWidth: focusHighlighter ? AppFocusOutline.emphasizedWidth : AppFocusOutline.width
-                )
-            )
-            .shadow(
-                color: .black.opacity(showsFocusedAppearance ? 0.5 : 0.2),
-                radius: showsFocusedAppearance ? 16 : 6
-            )
-
-            if posterLabels || forceShowLabels {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(meta.name)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(showsFocusedAppearance ? .white : .white.opacity(0.78))
-                        .lineLimit(1)
-                    Text(subtitle)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white.opacity(0.45))
-                        .lineLimit(1)
-                }
-                .frame(width: width, alignment: .leading)
-            }
-        }
-        Button(action: action) {
-            cardContent
-                .scaleEffect(showsFocusedAppearance ? 1.06 : 1.0)
-        }
-        .buttonStyle(PosterCardButtonStyle())
-        .focused($focused)
-        .modifier(ExternalFocusBinding(binding: externalFocus, id: focusValue ?? meta.id))
-        .focusEffectDisabledIfAvailable()
-        .modifier(OptionalMoveCommandHandler(handler: onMove))
-        .titleActionsContextMenu(
-            meta: meta,
-            onOpenDetails: action
-        )
-        .onChange(of: focused) { _, isFocused in
-            if isFocused { onFocus?(meta) }
-        }
-        .onAppear {
-            guard shouldRequestInitialFocus, !didRequestInitialFocus else { return }
-            didRequestInitialFocus = true
-            onInitialFocusRequested?()
-            DispatchQueue.main.async { focused = true }
-        }
-        .animation(
-            smoothFocus ? .spring(response: 0.28, dampingFraction: 0.75) : nil,
-            value: showsFocusedAppearance
-        )
-    }
-
-    private var placeholder: some View {
-        ZStack {
-            Rectangle().fill(Color.white.opacity(0.07))
-            Image(systemName: meta.type == "series" ? "tv" : "film")
-                .font(.system(size: 40))
-                .foregroundColor(.white.opacity(0.25))
-        }
-    }
-
-    private var subtitle: String {
-        let typeLabel = meta.type == "series"
-            ? L10n.string("type_series", fallback: "Series")
-            : L10n.string("type_movie", fallback: "Movie")
-        var parts: [String] = [typeLabel]
-        if let year = meta.year { parts.append(String(year)) }
-        if let rating = meta.rating, rating > 0 { parts.append(String(format: "★ %.1f", rating)) }
-        return parts.joined(separator: "  ·  ")
-    }
-}
-
-private struct OptionalMoveCommandHandler: ViewModifier {
-    let handler: ((MoveCommandDirection) -> Void)?
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let handler {
-            content.onMoveCommand(perform: handler)
-        } else {
-            content
-        }
-    }
-}
 #endif
 
 #if canImport(UIKit)
@@ -1540,6 +1500,14 @@ struct CachedPosterArtwork<Placeholder: View>: View {
         if preloadedKey == cacheKey { return preloadedImage }
         if previousLoadedKey == cacheKey { return previousImage }
 
+        // A remounted card has fresh state but its artwork is usually still in
+        // memory. `.task` only runs after the first render, so peek synchronously
+        // here to avoid drawing the placeholder for that frame.
+        if let urlString, let url = URL(string: urlString),
+           let hit = PosterArtworkCache.cachedImage(for: url, maxPixelSize: maxPixelSize) {
+            return hit
+        }
+
         // While a brand-new variant is loading, keep real artwork on screen.
         // For landscape expansion this naturally starts with a zoomed poster;
         // for collapse the matching portrait is normally `previousImage`.
@@ -1590,6 +1558,21 @@ struct CachedPosterArtwork<Placeholder: View>: View {
             if traceLoad {
                 TVHomeDebugTrace.log(
                     "art.load.end source=previous ms=\(TVHomeDebugTrace.elapsedMilliseconds(since: started))"
+                )
+            }
+            return
+        }
+
+        // Memory hit: adopt it without the actor hop, which always suspends and
+        // would otherwise leave the placeholder up for at least one frame.
+        if let hit = PosterArtworkCache.cachedImage(for: url, maxPixelSize: maxPixelSize) {
+            previousImage = image
+            previousLoadedKey = loadedKey
+            image = hit
+            loadedKey = key
+            if traceLoad {
+                TVHomeDebugTrace.log(
+                    "art.load.end source=memory ms=\(TVHomeDebugTrace.elapsedMilliseconds(since: started))"
                 )
             }
             return
@@ -1659,24 +1642,79 @@ struct CachedPosterArtwork<Placeholder: View>: View {
     }
 }
 
+/// A decoded poster plus the moment it entered memory. Volatile hosts carry a
+/// TTL so a rating overlay is refreshed on a schedule instead of never cached.
+private final class PosterCacheEntry {
+    let image: UIImage
+    let storedAt: Date
+    let ttl: TimeInterval?
+
+    init(image: UIImage, storedAt: Date = Date(), ttl: TimeInterval?) {
+        self.image = image
+        self.storedAt = storedAt
+        self.ttl = ttl
+    }
+
+    func isFresh(now: Date = Date()) -> Bool {
+        guard let ttl else { return true }
+        return PosterDiskCacheFreshness.isFresh(modified: storedAt, now: now, ttl: ttl)
+    }
+}
+
+/// NSCache is thread-safe; this box states that so the actor can expose a
+/// synchronous, nonisolated peek for the first frame of a mounting card.
+private final class PosterMemoryCache: @unchecked Sendable {
+    private let cache = NSCache<NSString, PosterCacheEntry>()
+
+    init() {
+        // Cost governs eviction. A count limit of 220 bound at roughly 62 MB of
+        // 210x315 posters, long before the byte budget was ever reached.
+        cache.countLimit = 0
+        cache.totalCostLimit = 140 * 1024 * 1024
+    }
+
+    func entry(for key: NSString) -> PosterCacheEntry? {
+        cache.object(forKey: key)
+    }
+
+    func store(_ entry: PosterCacheEntry, for key: NSString, cost: Int) {
+        cache.setObject(entry, forKey: key, cost: cost)
+    }
+}
+
 private actor PosterArtworkCache {
     static let shared = PosterArtworkCache()
 
-    private let cache = NSCache<NSString, UIImage>()
+    private nonisolated let memory = PosterMemoryCache()
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
 
-    init() {
-        cache.countLimit = 220
-        cache.totalCostLimit = 140 * 1024 * 1024
+    nonisolated static func cacheKey(for url: URL, maxPixelSize: Int) -> NSString {
+        "\(url.absoluteString)#\(min(max(maxPixelSize, 160), 1400))" as NSString
+    }
+
+    /// Synchronous hit path. A mounting card can draw real artwork on its first
+    /// frame instead of the placeholder it showed while awaiting the actor.
+    nonisolated static func cachedImage(for url: URL, maxPixelSize: Int) -> UIImage? {
+        guard let entry = shared.memory.entry(for: cacheKey(for: url, maxPixelSize: maxPixelSize)),
+              entry.isFresh() else {
+            return nil
+        }
+        return entry.image
     }
 
     func image(for url: URL, maxPixelSize: Int) async -> UIImage? {
         let boundedPixelSize = min(max(maxPixelSize, 160), 1400)
-        let key = "\(url.absoluteString)#\(boundedPixelSize)" as NSString
+        let key = Self.cacheKey(for: url, maxPixelSize: boundedPixelSize)
+        // Volatility now only shortens how long the bytes stay trusted; it no
+        // longer disables caching, which re-downloaded on every card mount.
         let volatile = PosterArtworkCachePolicy.isVolatile(url)
+        let diskTTL = PosterArtworkCachePolicy.freshnessTTL(
+            for: url,
+            defaultTTL: PosterDiskCache.freshnessTTL
+        )
 
-        if !volatile, let cached = cache.object(forKey: key) {
-            return cached
+        if let entry = memory.entry(for: key), entry.isFresh() {
+            return entry.image
         }
 
         if let task = inFlight[key as String] {
@@ -1686,7 +1724,7 @@ private actor PosterArtworkCache {
         let task = Task.detached(priority: .utility) { () -> UIImage? in
             // Disk before network, like Coil. The bytes are keyed by URL alone,
             // so one stored poster serves every size a card asks for.
-            if !volatile, let stored = await PosterDiskCache.shared.data(for: url),
+            if let stored = await PosterDiskCache.shared.data(for: url, ttl: diskTTL),
                let image = await PosterDecodeLimiter.shared.image(
                    from: stored,
                    maxPixelSize: boundedPixelSize
@@ -1695,7 +1733,7 @@ private actor PosterArtworkCache {
             }
 
             guard let data = await downloadPosterData(url: url, revalidate: volatile) else { return nil }
-            if !volatile { await PosterDiskCache.shared.store(data, for: url) }
+            await PosterDiskCache.shared.store(data, for: url)
             return await PosterDecodeLimiter.shared.image(
                 from: data,
                 maxPixelSize: boundedPixelSize
@@ -1706,8 +1744,15 @@ private actor PosterArtworkCache {
         let image = await task.value
         inFlight[key as String] = nil
 
-        if let image, !volatile {
-            cache.setObject(image, forKey: key, cost: image.decodedByteCost)
+        if let image {
+            memory.store(
+                PosterCacheEntry(
+                    image: image,
+                    ttl: volatile ? PosterArtworkCachePolicy.volatileFreshnessTTL : nil
+                ),
+                for: key,
+                cost: image.decodedByteCost
+            )
         }
         return image
     }
@@ -1785,11 +1830,11 @@ private actor PosterDiskCache {
         try? fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
     }
 
-    func data(for url: URL) -> Data? {
+    func data(for url: URL, ttl: TimeInterval = PosterDiskCache.freshnessTTL) -> Data? {
         let file = fileURL(for: url)
         guard let attributes = try? fileManager.attributesOfItem(atPath: file.path),
               let modified = attributes[.modificationDate] as? Date,
-              PosterDiskCacheFreshness.isFresh(modified: modified, now: Date(), ttl: Self.freshnessTTL) else {
+              PosterDiskCacheFreshness.isFresh(modified: modified, now: Date(), ttl: ttl) else {
             return nil
         }
         return try? Data(contentsOf: file, options: .mappedIfSafe)
@@ -1868,9 +1913,17 @@ enum PosterArtworkCachePolicy {
         "easyratingsdb.com", "extendedratings.com", "postersplus.elfhosted.com"
     ]
 
+    /// Volatile hosts render posters on demand (rating overlays), so their bytes
+    /// are revalidated on a short schedule rather than never cached at all.
+    static let volatileFreshnessTTL: TimeInterval = 30 * 60
+
     static func isVolatile(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return volatileHosts.contains { host == $0 || host.hasSuffix(".\($0)") }
+    }
+
+    static func freshnessTTL(for url: URL, defaultTTL: TimeInterval) -> TimeInterval {
+        isVolatile(url) ? volatileFreshnessTTL : defaultTTL
     }
 }
 
@@ -2047,8 +2100,12 @@ struct WatchedCheckmarkBadge: View {
         return "\(WatchedStore.activeProfileId ?? "default")\u{1f}\(type.lowercased())\u{1f}\(metaId)\u{1f}\(imdb)\u{1f}\(tmdb)"
     }
 
+    // `isEnabled` is deliberately not part of the identity. A row's `.disabled`
+    // flips for every card in it on each vertical move, which re-armed every
+    // badge's lookup; the store notification above already covers a watched
+    // change that lands while the card is disabled behind an overlay.
     private var refreshTaskIdentity: String {
-        "\(refreshIdentity)\u{1f}\(refreshVersion)\u{1f}\(isEnabled)"
+        "\(refreshIdentity)\u{1f}\(refreshVersion)"
     }
 
     @MainActor

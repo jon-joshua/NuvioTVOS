@@ -24,7 +24,6 @@ struct SearchDiscoverGrid: View {
                         meta: item,
                         width: posterWidth,
                         height: posterHeight,
-                        onLongPress: onLongPress.map { cb in { cb(item) } },
                         forceShowLabels: true
                     ) {
                         onContentClick(item.id, item.type)

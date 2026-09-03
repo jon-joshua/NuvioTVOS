@@ -82,7 +82,7 @@ struct NavigationRail<Icon: View>: View {
         .ignoresSafeArea(edges: .leading)
         .background(alignment: .leading) { scrim }
         .focusSection()
-        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: isExpanded)
+        .animation(NuvioMotion.drawer, value: isExpanded)
         .onChange(of: focusedTab) { _, tab in isFocused = tab != nil }
         .onChange(of: focusRequest) { _, requested in
             guard requested else { return }

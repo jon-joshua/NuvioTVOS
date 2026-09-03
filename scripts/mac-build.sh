@@ -10,23 +10,25 @@ TARGET="${1:-simulator}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="$ROOT/tvosApp/NuvioTV.xcodeproj"
 SCHEME="NuvioTV"
-BUNDLE_ID="com.nuvio.app.tv"
+# Must match PRODUCT_BUNDLE_IDENTIFIER in the project, or install succeeds but
+# launch fails with FBSOpenApplicationServiceErrorDomain code 4.
+BUNDLE_ID="${BUNDLE_ID:-com.pyksel.nuviotvos}"
 # Under tvosApp/build, which is gitignored (the root build/ folder is not).
 DERIVED="$ROOT/tvosApp/build/DerivedData"
 LOG="$ROOT/tvosApp/build/xcodebuild.log"
 SIM_NAME="${TVOS_SIM_NAME:-Apple TV}"
 mkdir -p "$(dirname "$LOG")"
 
-# MPVKit is a submodule; a plain clone leaves it empty and package
-# resolution fails on its missing Package.swift. Idempotent.
-git -C "$ROOT" submodule update --init --recursive
 
 # Full output goes to the log; only errors and the verdict reach the terminal.
 build() {
   set +e
   # No `|| true` here: it would replace PIPESTATUS with `true`'s exit code.
+  # NUVIO_BUNDLE_PREFIX drives every target's bundle id and the app group
+  # (see project.pbxproj and the .entitlements files). Upstream's id belongs
+  # to the maintainer's Apple team, so a fork signs with its own prefix.
   xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Debug \
-    -derivedDataPath "$DERIVED" "$@" build 2>&1 | tee "$LOG" \
+    -derivedDataPath "$DERIVED" NUVIO_BUNDLE_PREFIX="$BUNDLE_ID" "$@" build 2>&1 | tee "$LOG" \
     | grep -E --line-buffered "error:|error |BUILD (SUCCEEDED|FAILED)|warning: .*\.swift"
   local status=${PIPESTATUS[0]}
   set -e
@@ -48,8 +50,14 @@ case "$TARGET" in
   device)
     : "${TVOS_DEVICE_NAME:?set TVOS_DEVICE_NAME to the Apple TV name in Xcode > Devices}"
     : "${DEVELOPMENT_TEAM:?set DEVELOPMENT_TEAM to your Xcode team id}"
+    # The project's app target is set to Manual signing with no team so the
+    # simulator builds from a fresh clone. For a device we override to
+    # Automatic with the caller's team, and let xcodebuild register the device
+    # and create the development profile.
     build -destination "platform=tvOS,name=$TVOS_DEVICE_NAME" \
-      -allowProvisioningUpdates DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM"
+      -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
+      CODE_SIGN_STYLE=Automatic DEVELOPMENT_TEAM="$DEVELOPMENT_TEAM" \
+      PROVISIONING_PROFILE_SPECIFIER=""
     APP="$DERIVED/Build/Products/Debug-appletvos/$SCHEME.app"
     xcrun devicectl device install app --device "$TVOS_DEVICE_NAME" "$APP"
     xcrun devicectl device process launch --device "$TVOS_DEVICE_NAME" "$BUNDLE_ID"

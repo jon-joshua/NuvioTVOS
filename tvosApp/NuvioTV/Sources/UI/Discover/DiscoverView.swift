@@ -1,6 +1,6 @@
 import SwiftUI
 
-private enum DiscoverGridMetrics {
+enum DiscoverGridMetrics {
     static let posterWidth: CGFloat = 210
     static let posterHeight: CGFloat = 315
     static let posterGap: CGFloat = 28
@@ -225,8 +225,7 @@ struct DiscoverSection: View {
                         meta: item,
                         externalFocus: $focusedCardID,
                         onFocusChange: { updateDiscoverFocus("card:\(item.id)", isFocused: $0) },
-                        retainFocusAppearance: overlayRestoreCardID == item.id,
-                        onLongPress: onLongPress.map { cb in { cb(item) } }
+                        retainFocusAppearance: overlayRestoreCardID == item.id
                     ) {
                         parentTransitionActive = true
                         overlayRestoreCardID = item.id
@@ -353,126 +352,3 @@ struct FilterMenu<MenuContent: View>: View {
 
 // MARK: - Card
 
-private struct DiscoverCard: View {
-    let meta: NuvioMeta
-    var externalFocus: FocusState<String?>.Binding? = nil
-    var onFocusChange: ((Bool) -> Void)? = nil
-    var retainFocusAppearance = false
-    var onLongPress: (() -> Void)? = nil
-    let action: () -> Void
-    @FocusState private var focused: Bool
-    @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
-    @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
-
-    private var cardCornerRadius: CGFloat {
-        AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16)
-    }
-
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-    }
-
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 10) {
-                ZStack(alignment: .bottom) {
-                    CachedPosterArtwork(
-                        urlString: meta.posterUrl,
-                        width: DiscoverGridMetrics.posterWidth,
-                        height: DiscoverGridMetrics.posterHeight,
-                        maximumWidth: DiscoverGridMetrics.posterWidth
-                    ) {
-                        ZStack {
-                            Rectangle().fill(Color.white.opacity(0.07))
-                            Image(systemName: meta.type == "series" ? "tv" : "film")
-                                .font(.system(size: 40))
-                                .foregroundColor(.white.opacity(0.25))
-                        }
-                    }
-                    .frame(width: DiscoverGridMetrics.posterWidth, height: DiscoverGridMetrics.posterHeight)
-
-                    if metaLine != nil {
-                        LinearGradient(
-                            colors: [.clear, .black.opacity(0.85)],
-                            startPoint: .center,
-                            endPoint: .bottom
-                        )
-                        .frame(height: 120)
-                        .frame(maxWidth: .infinity, alignment: .bottom)
-
-                        if let metaLine {
-                            Text(metaLine)
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.white.opacity(0.95))
-                                .lineLimit(1)
-                                .padding(.horizontal, 12)
-                                .padding(.bottom, 10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                }
-                .frame(width: DiscoverGridMetrics.posterWidth, height: DiscoverGridMetrics.posterHeight)
-                .clipShape(shape)
-                .modifier(
-                    LiquidGlassCardModifier(
-                        cornerRadius: cardCornerRadius,
-                        isFocused: showsFocusedAppearance,
-                        isEnabled: liquidGlassCards
-                    )
-                )
-                .overlay(alignment: .topTrailing) {
-                    WatchedCheckmarkBadge(meta: meta)
-                }
-                .overlay(
-                    shape.stroke(showsFocusedAppearance ? focusBorderColor : .clear, lineWidth: focusHighlighter ? AppFocusOutline.emphasizedWidth : AppFocusOutline.width)
-                )
-                .shadow(color: .black.opacity(showsFocusedAppearance ? 0.5 : 0.2), radius: showsFocusedAppearance ? 16 : 6)
-
-                if posterLabels {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(meta.name)
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(showsFocusedAppearance ? .white : .white.opacity(0.78))
-                            .lineLimit(1)
-                        if let year = meta.year {
-                            Text(String(year))
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.white.opacity(0.45))
-                        }
-                    }
-                    .frame(width: DiscoverGridMetrics.posterWidth, alignment: .leading)
-                }
-            }
-            .scaleEffect(showsFocusedAppearance ? 1.06 : 1.0)
-        }
-        .buttonStyle(PosterCardButtonStyle())
-        .focused($focused)
-        .modifier(ExternalFocusBinding(binding: externalFocus, id: meta.id))
-        .focusEffectDisabledIfAvailable()
-        .titleActionsContextMenu(
-            meta: meta,
-            onOpenDetails: action
-        )
-        .onChange(of: focused) { _, isFocused in onFocusChange?(isFocused) }
-        .animation(smoothFocus ? .spring(response: 0.28, dampingFraction: 0.75) : nil, value: showsFocusedAppearance)
-    }
-
-    /// "Genre · ★ Rating" overlay, omitting whichever piece is missing.
-    private var metaLine: String? {
-        var parts: [String] = []
-        if let genre = meta.genres?.first, !genre.isEmpty { parts.append(genre) }
-        if let rating = meta.rating, rating > 0 { parts.append(String(format: "★ %.1f", rating)) }
-        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
-    }
-
-    private var focusBorderColor: Color {
-        AppFocusOutline.color
-    }
-
-    private var showsFocusedAppearance: Bool {
-        focused || retainFocusAppearance
-    }
-}

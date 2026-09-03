@@ -604,7 +604,6 @@ struct NetflixSearchView: View {
                         externalFocus: $focusedItemID,
                         focusValue: focusID,
                         retainFocusAppearance: overlayRestoreItemID == focusID,
-                        onLongPress: onLongPress.map { cb in { cb(item) } },
                         forceShowLabels: true,
                         onMove: index < gridColumns.count ? { direction in
                             guard direction == .up else { return }

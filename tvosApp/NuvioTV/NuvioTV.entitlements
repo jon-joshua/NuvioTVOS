@@ -8,7 +8,7 @@
 	<array/>
 	<key>com.apple.security.application-groups</key>
 	<array>
-		<string>group.com.pyksel.nuviotvos</string>
+		<string>group.$(NUVIO_BUNDLE_PREFIX)</string>
 	</array>
 </dict>
 </plist>
