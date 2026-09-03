@@ -7,7 +7,6 @@ struct TVMainTabView: View {
     @Binding var selectedTab: TVTab
     let activeProfile: Profile?
     @ObservedObject var searchViewModel: SearchViewModel
-    @ObservedObject var netflixSearchViewModel: NetflixSearchViewModel
     @ObservedObject var libraryViewModel: LibraryViewModel
     @ObservedObject var homeStore: TVHomeStore
     let homeCatalogRevision: UInt
@@ -43,7 +42,6 @@ struct TVMainTabView: View {
     @AppStorage(SettingsKey.amoled) private var amoled = false
     @AppStorage(SettingsKey.bodyColor) private var bodyColor = SettingsBackground.charcoal.rawValue
     @AppStorage(SettingsKey.discoverLocation) private var discoverLocation = "Search"
-    @AppStorage(SettingsKey.searchStyle) private var searchStyle = "Netflix"
     @AppStorage(SettingsKey.profileName) private var settingsProfileName = "Nuvio User"
     @StateObject private var profileTabAvatar = ProfileTabAvatarRenderer()
     @State private var showingReauthSheet = false
@@ -233,23 +231,13 @@ struct TVMainTabView: View {
         }
     }
 
-    /// Search screen chosen in Settings → Layout & Discovery → Search Style.
-    @ViewBuilder
+    /// The system-keyboard search over a full-width poster grid.
     private var searchTab: some View {
-        if searchStyle == "Classic" {
-            SearchView(
-                viewModel: searchViewModel,
-                showDiscover: discoverLocation == "Search",
-                onContentClick: onNavigateToDetails,
-                onLongPress: onLongPressCard
-            )
-        } else {
-            NetflixSearchView(
-                viewModel: netflixSearchViewModel,
-                showDiscover: discoverLocation == "Search",
-                onContentClick: onNavigateToDetails,
-                onLongPress: onLongPressCard
-            )
-        }
+        SearchView(
+            viewModel: searchViewModel,
+            showDiscover: discoverLocation == "Search",
+            onContentClick: onNavigateToDetails,
+            onLongPress: onLongPressCard
+        )
     }
 }

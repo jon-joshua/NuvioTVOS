@@ -188,13 +188,14 @@ extension View {
 // MARK: - Grid tiles
 
 #if os(tvOS)
-/// Poster tile for the full-width grids — Search results and the Grid Home
-/// previews — so both read as one card: art that lifts and outlines on focus,
-/// plus the two-line title/subtitle pair when poster labels are on.
+/// Poster tile for the full-width grids: Search results and the Grid Home
+/// previews. The system card style owns the whole focus treatment (lift,
+/// specular highlight, parallax, shadow, scale), so the tile draws nothing but
+/// the artwork, the watched badge and the caption underneath.
 ///
 /// Distinct from `PosterCard`, which is the row-strip card: that one also has to
 /// expand to landscape artwork, carry Continue Watching progress, and stay
-/// cheap while a whole strip of it is mounted, so it deliberately stays flatter.
+/// cheap while a whole strip of it is mounted.
 struct PosterGridCard: View {
     let meta: NuvioMeta
     var width: CGFloat = 210
@@ -203,77 +204,67 @@ struct PosterGridCard: View {
     /// Defaults to `meta.id`. Home passes a section-scoped key, since the same
     /// title can appear in more than one catalog.
     var focusValue: String? = nil
-    var retainFocusAppearance = false
     /// Pre-resolved watched state; `nil` lets the badge look it up itself.
     var isWatched: Bool? = nil
     var shouldRequestInitialFocus = false
     var onInitialFocusRequested: (() -> Void)? = nil
     var onFocus: ((NuvioMeta) -> Void)? = nil
     /// Forces the title/subtitle caption to render regardless of the user's
-    /// global poster-labels setting (used by Search's Netflix-style grid).
+    /// global poster-labels setting (used by Search's grids).
     var forceShowLabels = false
-    /// Optional directional-command hook installed on the focusable Button
-    /// itself. Container-level handlers can miss commands consumed by tvOS's
-    /// focus engine before they bubble out of a poster.
-    var onMove: ((MoveCommandDirection) -> Void)? = nil
     let action: () -> Void
 
     @FocusState private var focused: Bool
     @State private var didRequestInitialFocus = false
-    /// Published once per screen by `PosterChromeStyleProvider`, so a grid of
-    /// these registers no UserDefaults observers of its own.
+    /// Only `posterLabels` is read; the card style replaces the rest.
     @Environment(\.posterChromeStyle) private var chrome
 
-    private var showsFocusedAppearance: Bool { focused || retainFocusAppearance }
-
     var body: some View {
-        let cardContent = VStack(alignment: .leading, spacing: 12) {
-            CachedPosterArtwork(
-                urlString: meta.posterUrl,
-                preloadURLString: nil,
-                width: width,
-                height: height,
-                maximumWidth: width,
-                minimumSwapDelay: 0,
-                onPreloadFinished: {}
-            ) {
-                placeholder
-            }
-            .frame(width: width, height: height)
-            .posterTileChrome(style: chrome, isFocused: showsFocusedAppearance) {
-                if let isWatched {
-                    if isWatched { WatchedCheckmarkIcon() }
-                } else {
-                    WatchedCheckmarkBadge(meta: meta)
+        VStack(alignment: .leading, spacing: 12) {
+            Button(action: action) {
+                CachedPosterArtwork(
+                    urlString: meta.posterUrl,
+                    preloadURLString: nil,
+                    width: width,
+                    height: height,
+                    maximumWidth: width,
+                    minimumSwapDelay: 0,
+                    onPreloadFinished: {}
+                ) {
+                    placeholder
+                }
+                .frame(width: width, height: height)
+                .overlay(alignment: .topTrailing) {
+                    if let isWatched {
+                        if isWatched { WatchedCheckmarkIcon() }
+                    } else {
+                        WatchedCheckmarkBadge(meta: meta)
+                    }
                 }
             }
+            .buttonStyle(.card)
+            .focused($focused)
+            .modifier(ExternalFocusBinding(binding: externalFocus, id: focusValue ?? meta.id))
+            .titleActionsContextMenu(
+                meta: meta,
+                onOpenDetails: action
+            )
 
             if chrome.posterLabels || forceShowLabels {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(meta.name)
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(showsFocusedAppearance ? .white : .white.opacity(0.78))
+                        .foregroundStyle(focused ? .white : .white.opacity(0.78))
                         .lineLimit(1)
                     Text(subtitle)
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white.opacity(0.45))
+                        .foregroundStyle(.white.opacity(0.45))
                         .lineLimit(1)
                 }
                 .frame(width: width, alignment: .leading)
+                .animation(NuvioMotion.focus, value: focused)
             }
         }
-        Button(action: action) {
-            cardContent
-                .scaleEffect(showsFocusedAppearance ? 1.06 : 1.0)
-        }
-        .buttonStyle(PosterCardButtonStyle())
-        .focused($focused)
-        .modifier(ExternalFocusBinding(binding: externalFocus, id: focusValue ?? meta.id))
-        .modifier(OptionalMoveCommandHandler(handler: onMove))
-        .titleActionsContextMenu(
-            meta: meta,
-            onOpenDetails: action
-        )
         .onChange(of: focused) { _, isFocused in
             if isFocused { onFocus?(meta) }
         }
@@ -283,7 +274,6 @@ struct PosterGridCard: View {
             onInitialFocusRequested?()
             DispatchQueue.main.async { focused = true }
         }
-        .animation(chrome.focusAnimation, value: showsFocusedAppearance)
     }
 
     private var placeholder: some View {
@@ -306,18 +296,6 @@ struct PosterGridCard: View {
     }
 }
 
-private struct OptionalMoveCommandHandler: ViewModifier {
-    let handler: ((MoveCommandDirection) -> Void)?
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let handler {
-            content.onMoveCommand(perform: handler)
-        } else {
-            content
-        }
-    }
-}
 #endif
 
 struct DiscoverCard: View {

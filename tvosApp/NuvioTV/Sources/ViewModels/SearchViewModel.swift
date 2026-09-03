@@ -198,7 +198,7 @@ class SearchViewModel: ObservableObject {
         saveRecent()
     }
 
-    /// Re-reads the shared recent-search list. `NetflixSearchViewModel` writes
+    /// Re-reads the shared recent-search list. Other search surfaces may write
     /// the same key, so whichever search style isn't on screen goes stale until
     /// its view reappears.
     func reloadRecent() {

@@ -179,7 +179,6 @@ struct SearchView: View {
                         width: SearchGridMetrics.posterWidth,
                         height: SearchGridMetrics.posterHeight,
                         externalFocus: $focusedResultID,
-                        retainFocusAppearance: overlayRestoreResultID == item.id,
                         forceShowLabels: true
                     ) {
                         overlayRestoreResultID = item.id
@@ -249,7 +248,7 @@ struct SearchView: View {
 
 // MARK: - Hidden text input
 
-// Internal (not private) so `NetflixSearchView` can reuse the same hidden
+// Internal (not private) so other screens can reuse the same hidden
 // text field to fall back to tvOS's system keyboard for Siri dictation.
 struct HiddenSearchTextField: UIViewRepresentable {
     @Binding var text: String

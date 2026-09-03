@@ -143,12 +143,7 @@ struct ContentView: View {
     @StateObject private var authManager = AuthManager()
     @StateObject private var profileViewModel = ProfileViewModel()
     @StateObject private var syncManager = NuvioSyncManager()
-    // Both search screens are backed by their own view model. Only the one
-    // picked by `SettingsKey.searchStyle` is rendered, but both are held here
-    // so switching styles doesn't tear down and refetch the other's state.
-    // They share the same recent-search storage key.
     @StateObject private var searchViewModel = SearchViewModel()
-    @StateObject private var netflixSearchViewModel = NetflixSearchViewModel()
     @StateObject private var libraryViewModel = LibraryViewModel()
     // Owned here (not inside TVHomeView) so the Home catalog + focused card
     // survive the details/player push, which tears TVHomeView down. Returning
@@ -1381,7 +1376,6 @@ struct ContentView: View {
             selectedTab: $selectedTab,
             activeProfile: profileViewModel.activeProfile,
             searchViewModel: searchViewModel,
-            netflixSearchViewModel: netflixSearchViewModel,
             libraryViewModel: libraryViewModel,
             homeStore: homeStore,
             homeCatalogRevision: syncManager.homeCatalogRevision,
@@ -1445,8 +1439,6 @@ struct ContentView: View {
                 homeStore.reset()
                 searchViewModel.clear()
                 searchViewModel.clearRecent()
-                netflixSearchViewModel.clear()
-                netflixSearchViewModel.clearRecent()
                 withAnimation(.easeInOut(duration: 0.28)) {
                     selectedTab = .home
                     profileViewModel.activeProfile = nil

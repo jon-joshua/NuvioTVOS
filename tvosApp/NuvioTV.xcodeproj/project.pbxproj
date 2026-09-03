@@ -18,8 +18,6 @@
 		7E51000000000000000000B1 /* TopShelf.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 7E51000000000000000000A1 /* TopShelf.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		7E51000000000000000000B2 /* TopShelf/TopShelfContentProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E51000000000000000000A2 /* TopShelf/TopShelfContentProvider.swift */; };
 		7E51000000000000000000B3 /* NuvioTV/Sources/Core/TopShelf/TopShelfFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300390000000000000039 /* NuvioTV/Sources/Core/TopShelf/TopShelfFeed.swift */; };
-		A17000000000000000000011 /* NuvioTV/Sources/UI/Search/NetflixSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17000000000000000000001 /* NuvioTV/Sources/UI/Search/NetflixSearchView.swift */; };
-		A17000000000000000000012 /* NuvioTV/Sources/ViewModels/NetflixSearchViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17000000000000000000002 /* NuvioTV/Sources/ViewModels/NetflixSearchViewModel.swift */; };
 		A17000000000000000000013 /* NuvioTV/Sources/Core/Search/SearchResultEnrichment.swift in Sources */ = {isa = PBXBuildFile; fileRef = A17000000000000000000003 /* NuvioTV/Sources/Core/Search/SearchResultEnrichment.swift */; };
 		A1L100020000000000000002 /* NuvioTV/Sources/Core/AppLanguage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1L100010000000000000001 /* NuvioTV/Sources/Core/AppLanguage.swift */; };
 		A1L100040000000000000004 /* NuvioTV/Resources/AppLanguageCatalog.json in Resources */ = {isa = PBXBuildFile; fileRef = A1L100030000000000000003 /* NuvioTV/Resources/AppLanguageCatalog.json */; };
@@ -214,8 +212,6 @@
 		7E51000000000000000000A2 /* TopShelf/TopShelfContentProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TopShelf/TopShelfContentProvider.swift; sourceTree = "<group>"; };
 		7E51000000000000000000A3 /* TopShelf/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = TopShelf/Info.plist; sourceTree = "<group>"; };
 		7E51000000000000000000A4 /* TopShelf/TopShelf.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TopShelf/TopShelf.entitlements; sourceTree = "<group>"; };
-		A17000000000000000000001 /* NuvioTV/Sources/UI/Search/NetflixSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Search/NetflixSearchView.swift; sourceTree = "<group>"; };
-		A17000000000000000000002 /* NuvioTV/Sources/ViewModels/NetflixSearchViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/ViewModels/NetflixSearchViewModel.swift; sourceTree = "<group>"; };
 		A17000000000000000000003 /* NuvioTV/Sources/Core/Search/SearchResultEnrichment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/Core/Search/SearchResultEnrichment.swift; sourceTree = "<group>"; };
 		A1L100010000000000000001 /* NuvioTV/Sources/Core/AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/Core/AppLanguage.swift; sourceTree = "<group>"; };
 		A1L100030000000000000003 /* NuvioTV/Resources/AppLanguageCatalog.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = NuvioTV/Resources/AppLanguageCatalog.json; sourceTree = "<group>"; };
@@ -570,7 +566,6 @@
 				C0D3003E000000000000003E /* NuvioTV/Sources/UI/Player/SidePanels.swift */,
 				C0D300150000000000000015 /* NuvioTV/Sources/UI/Profile/ProfilePinView.swift */,
 				C0D300160000000000000016 /* NuvioTV/Sources/UI/Profile/UserProfileView.swift */,
-				A17000000000000000000001 /* NuvioTV/Sources/UI/Search/NetflixSearchView.swift */,
 				C0D300170000000000000017 /* NuvioTV/Sources/UI/Search/SearchView.swift */,
 				C0D300B4000000000000B4B4 /* NuvioTV/Sources/UI/Navigation/NavigationRail.swift */,
 				C0D300B7000000000000B7B7 /* NuvioTV/Sources/UI/Theme/NuvioMotion.swift */,
@@ -601,7 +596,6 @@
 				C0D3001B000000000000001B /* NuvioTV/Sources/ViewModels/DetailsViewModel.swift */,
 				C0D300290000000000000029 /* NuvioTV/Sources/ViewModels/DiscoverViewModel.swift */,
 				C0D3001D000000000000001D /* NuvioTV/Sources/ViewModels/LibraryViewModel.swift */,
-				A17000000000000000000002 /* NuvioTV/Sources/ViewModels/NetflixSearchViewModel.swift */,
 				C0D3001E000000000000001E /* NuvioTV/Sources/ViewModels/PlayerViewModel.swift */,
 				C0D3001F000000000000001F /* NuvioTV/Sources/ViewModels/ProfileViewModel.swift */,
 				C0D300200000000000000020 /* NuvioTV/Sources/ViewModels/SearchViewModel.swift */,
@@ -902,7 +896,6 @@
 				C0D310B2000000000000B2B2 /* NuvioTV/Sources/UI/Navigation/TVTab.swift in Sources */,
 				C0D310B3000000000000B3B3 /* NuvioTV/Sources/UI/Navigation/TVMainTabView.swift in Sources */,
 				C0D310B1000000000000B1B1 /* NuvioTV/Sources/UI/Search/SearchDiscoverGrid.swift in Sources */,
-				A17000000000000000000011 /* NuvioTV/Sources/UI/Search/NetflixSearchView.swift in Sources */,
 				C0D310180000000000000018 /* NuvioTV/Sources/UI/Settings/SettingsView.swift in Sources */,
 				C0D310190000000000000019 /* NuvioTV/Sources/UI/Addons/AddonsView.swift in Sources */,
 				C0D3101A000000000000001A /* NuvioTV/Sources/UI/Details/DetailsScreen.swift in Sources */,
@@ -926,7 +919,6 @@
 				C0D31054 /* NuvioTV/Sources/Core/Player/PlaybackWakeLock.swift in Sources */,
 				C0D3101F000000000000001F /* NuvioTV/Sources/ViewModels/ProfileViewModel.swift in Sources */,
 				C0D310200000000000000020 /* NuvioTV/Sources/ViewModels/SearchViewModel.swift in Sources */,
-				A17000000000000000000012 /* NuvioTV/Sources/ViewModels/NetflixSearchViewModel.swift in Sources */,
 				A17000000000000000000013 /* NuvioTV/Sources/Core/Search/SearchResultEnrichment.swift in Sources */,
 				C0D310220000000000000022 /* NuvioTV/Sources/DomainModels.swift in Sources */,
 				C0D310230000000000000023 /* NuvioTV/Sources/Core/Auth/AuthConfig.swift in Sources */,

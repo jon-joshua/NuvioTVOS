@@ -50,7 +50,6 @@ struct TVHomeCatalogGridSection: View {
                         height: TVHomeGridLayout.posterHeight,
                         externalFocus: externalFocus,
                         focusValue: cardKey,
-                        retainFocusAppearance: restrictFocusToCardKey == cardKey,
                         isWatched: TVHomeGridLayout.isWatched(item, watchedTitleKeys: watchedTitleKeys),
                         shouldRequestInitialFocus: shouldRequestInitialFocus,
                         onInitialFocusRequested: shouldRequestInitialFocus ? onInitialFocusRequested : nil,
