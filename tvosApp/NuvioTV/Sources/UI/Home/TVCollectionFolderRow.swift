@@ -73,8 +73,6 @@ struct TVCollectionFolderRow: View {
 
     @State private var scrollIndex: Int?
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    private let smoothFocus = true
-    @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     private var effectiveScrollIndex: Int {
         let raw = scrollIndex ?? initialScrollIndex
@@ -164,9 +162,6 @@ struct TVCollectionFolderRow: View {
     private var cardStrip: some View {
         GeometryReader { geo in
             let stripWidth = max(1920, geo.size.width + horizontalEdgeInset * 2)
-            let rowPosterLabels = posterLabels
-            let rowSmoothFocus = smoothFocus
-            let rowFocusHighlighter = focusHighlighter
             let rowSpacing = TVCollectionFolderCardLayout.rowSpacing()
             let scrollX = TVCollectionFolderCardLayout.scrollOffset(
                 to: effectiveScrollIndex,
@@ -194,10 +189,6 @@ struct TVCollectionFolderRow: View {
                             }
                             onFocus(folder)
                         },
-                        showPosterLabels: rowPosterLabels,
-                        smoothFocusAnimations: rowSmoothFocus,
-                        focusHighlighterEnabled: rowFocusHighlighter,
-                        allowsFocus: true,
                         onSelect: { onSelect(folder) }
                     )
                     .disabled(!isRowFocused && index != effectiveScrollIndex)
@@ -220,7 +211,7 @@ struct TVCollectionFolderRow: View {
             .clipped()
             .offset(x: -horizontalEdgeInset)
             .animation(
-                rowSmoothFocus && !suppressFocusAnimations ? TVHomeLayout.scrollAnimation : nil,
+                !suppressFocusAnimations ? TVHomeLayout.scrollAnimation : nil,
                 value: effectiveScrollIndex
             )
         }
@@ -259,17 +250,11 @@ private struct TVCollectionFolderCard: View {
     var externalFocus: FocusState<String?>.Binding? = nil
     var externalFocusValue: String? = nil
     var onFocus: (() -> Void)? = nil
-    var showPosterLabels: Bool = false
-    var smoothFocusAnimations: Bool = true
-    var focusHighlighterEnabled: Bool = false
-    var allowsFocus = true
     let onSelect: () -> Void
 
     @FocusState private var isFocused: Bool
     @State private var didRequestInitialFocus = false
-    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-
-    private var showFocus: Bool { isFocused }
+    @Environment(\.posterLabels) private var posterLabels
 
     /// All shapes share the same height; landscape/square only widen.
     private var cardWidth: CGFloat {
@@ -280,14 +265,7 @@ private struct TVCollectionFolderCard: View {
         TVCollectionFolderCardLayout.cardHeight()
     }
 
-    /// Keep the focus surface identical to the visible card, matching normal
-    /// collection folders and allowing tvOS to navigate Left natively.
-    private var layoutWidth: CGFloat { cardWidth }
-
-    /// Search-style labels use two lines (title + subtitle); reserve space.
-    private var totalCardHeight: CGFloat {
-        cardHeight + (showPosterLabels && !folder.hideTitle ? 48 : 0)
-    }
+    private var showsCaption: Bool { posterLabels && !folder.hideTitle }
 
     private var displayTitle: String {
         let t = folder.title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -299,24 +277,12 @@ private struct TVCollectionFolderCard: View {
         return count == 1 ? "1 catalog" : "\(count) catalogs"
     }
 
-    private var cardCornerRadius: CGFloat {
-        AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16)
-    }
-
-    private var cardShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-    }
-
     /// Image URL wins when present; otherwise a non-nil `coverEmoji` means the
     /// user picked emoji cover mode (value may still be empty).
     private var coverImageURL: URL? {
         guard let raw = folder.coverImageUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty else { return nil }
         return URL(string: raw)
-    }
-
-    private var usesEmojiCover: Bool {
-        coverImageURL == nil && folder.coverEmoji != nil
     }
 
     private var usesLogoCoverPresentation: Bool {
@@ -335,170 +301,76 @@ private struct TVCollectionFolderCard: View {
         min(cardWidth, cardHeight) * 0.28
     }
 
-    private var focusedBorderColor: Color {
-        guard showFocus else { return .clear }
-        return AppFocusOutline.color
-    }
-
-    private var focusedBorderWidth: CGFloat {
-        showFocus ? (focusHighlighterEnabled ? AppFocusOutline.emphasizedWidth : AppFocusOutline.width) : 0
-    }
-
-    /// Match SearchResultCard / LibraryItemButton shadow.
-    private var shadowOpacity: Double { showFocus ? 0.5 : 0.2 }
-    private var shadowRadius: CGFloat { showFocus ? 16 : 6 }
-
-    /// Focus GIF overlay — same contract as Android TV: only while focused
-    /// (or focus retained under an overlay) and only when enabled + URL set.
-    private var focusGifURLString: String? {
-        folder.activeFocusGifURLString
-    }
-
     var body: some View {
-        // Home rows keep focusable + tap (like PosterCard) so external focus
-        // restoration and strip paging stay intact; chrome matches Search cards.
-        cardContent
-            .contentShape(Rectangle())
-            .focusable(allowsFocus)
+        VStack(alignment: .leading, spacing: 12) {
+            // The system card style owns the focus treatment; the label is
+            // exactly the cover plate, so the lift and clip follow its shape.
+            Button(action: onSelect) {
+                artTile
+                    .frame(width: cardWidth, height: cardHeight)
+            }
+            .buttonStyle(.card)
             .focused($isFocused)
             .modifier(ExternalFocusBinding(binding: externalFocus, id: externalFocusValue ?? folder.id))
-            .focusEffectDisabledIfAvailable()
-            .onTapGesture(perform: onSelect)
-            .onChange(of: isFocused) { _, focused in
-                if focused { onFocus?() }
-            }
-            .onAppear {
-                guard shouldRequestInitialFocus, !didRequestInitialFocus else { return }
-                didRequestInitialFocus = true
-                onInitialFocusRequested?()
-                DispatchQueue.main.async {
-                    isFocused = true
-                }
-            }
-            .frame(width: cardWidth, height: totalCardHeight, alignment: .topLeading)
-            .zIndex(showFocus ? 1 : 0)
-    }
 
-    private var cardContent: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            artTile
-
-            if showPosterLabels && !folder.hideTitle {
+            if showsCaption {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(displayTitle)
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.86))
+                        .foregroundStyle(.white.opacity(0.86))
                         .lineLimit(1)
                     Text(subtitle)
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white.opacity(0.45))
+                        .foregroundStyle(.white.opacity(0.45))
                         .lineLimit(1)
                 }
                 .frame(width: cardWidth, alignment: .leading)
-                .animation(nil, value: showFocus)
             }
         }
-        .frame(width: layoutWidth, height: totalCardHeight, alignment: .topLeading)
+        .onChange(of: isFocused) { _, focused in
+            if focused { onFocus?() }
+        }
+        .onAppear {
+            guard shouldRequestInitialFocus, !didRequestInitialFocus else { return }
+            didRequestInitialFocus = true
+            onInitialFocusRequested?()
+            DispatchQueue.main.async { isFocused = true }
+        }
     }
 
-    @ViewBuilder
+    /// Cover image, emoji or folder glyph on a flat plate, with the focus GIF
+    /// on top while focused.
     private var artTile: some View {
-        if let url = coverImageURL {
-            imageCover(url: url)
-        } else if usesEmojiCover {
-            emojiGlassCover
-        } else {
-            emptyCover
-        }
-    }
-
-    /// Shared focus-GIF layer drawn over cover image / emoji / empty chrome.
-    @ViewBuilder
-    private var focusGifOverlay: some View {
-        if let gifURL = focusGifURLString {
-            AnimatedRemoteGIFView(urlString: gifURL, isActive: showFocus)
-                .frame(width: cardWidth, height: cardHeight)
-                .clipped()
-                // Prefetch while the row is on screen so focus feels instant.
-                .opacity(1)
-                .allowsHitTesting(false)
-        }
-    }
-
-    private func imageCover(url: URL) -> some View {
         ZStack {
-            if usesLogoCoverPresentation {
-                Color.clear
-                    .frame(width: cardWidth, height: cardHeight)
-                    .modifier(
-                        LiquidGlassSurface(
-                            cornerRadius: cardCornerRadius,
-                            prominent: showFocus
-                        )
-                    )
-            }
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    if usesLogoCoverPresentation {
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .padding(.horizontal, cardWidth * 0.10)
-                            .padding(.vertical, cardHeight * 0.10)
-                    } else {
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
+            Rectangle().fill(Color.white.opacity(0.07))
+
+            if let url = coverImageURL {
+                AsyncImage(url: url) { phase in
+                    if case .success(let image) = phase {
+                        if usesLogoCoverPresentation {
+                            image
+                                .resizable()
+                                .scaledToFit()
+                                .padding(.horizontal, cardWidth * 0.10)
+                                .padding(.vertical, cardHeight * 0.10)
+                        } else {
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                        }
                     }
-                default:
-                    // Loading / failed image falls back to empty art chrome.
-                    emptyCoverFill
                 }
-            }
-            focusGifOverlay
-        }
-        .frame(width: cardWidth, height: cardHeight)
-        .clipped()
-        .clipShape(cardShape)
-        .overlay(cardShape.stroke(focusedBorderColor, lineWidth: focusedBorderWidth))
-        .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius)
-    }
-
-    /// Liquid-glass tile when the folder uses an emoji cover (not a flat grey plate).
-    /// Glass + emoji sit underneath; the focus GIF paints on top when active.
-    private var emojiGlassCover: some View {
-        ZStack {
-            ZStack {
+            } else {
                 coverGlyph
             }
-            .frame(width: cardWidth, height: cardHeight)
-            .modifier(LiquidGlassSurface(cornerRadius: cardCornerRadius, prominent: showFocus))
 
-            focusGifOverlay
-                .clipShape(cardShape)
+            // Same contract as Android TV: only while focused, only when set.
+            if let gifURL = folder.activeFocusGifURLString {
+                AnimatedRemoteGIFView(urlString: gifURL, isActive: isFocused)
+                    .allowsHitTesting(false)
+            }
         }
-        .frame(width: cardWidth, height: cardHeight)
-        .overlay(cardShape.stroke(focusedBorderColor, lineWidth: focusedBorderWidth))
-        .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius)
-    }
-
-    private var emptyCover: some View {
-        ZStack {
-            emptyCoverFill
-            coverGlyph
-            focusGifOverlay
-        }
-        .frame(width: cardWidth, height: cardHeight)
-        .clipShape(cardShape)
-        .overlay(cardShape.stroke(focusedBorderColor, lineWidth: focusedBorderWidth))
-        .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius)
-    }
-
-    /// Flat grey fill for non-emoji empty / image-loading states (matches Search cards).
-    private var emptyCoverFill: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.07))
+        .clipped()
     }
 
     @ViewBuilder
@@ -509,7 +381,7 @@ private struct TVCollectionFolderCard: View {
         } else {
             Image(systemName: "folder")
                 .font(.system(size: 40))
-                .foregroundColor(.white.opacity(0.25))
+                .foregroundStyle(.white.opacity(0.25))
         }
     }
 }

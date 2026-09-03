@@ -3191,23 +3191,14 @@ private struct TvDetailsCompanyCard: View {
     let onFocus: () -> Void
 
     @FocusState private var isFocused: Bool
-    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    private let liquidGlassCards = true
-
-    private var cardCornerRadius: CGFloat {
-        AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 14)
-    }
-
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-    }
 
     var body: some View {
-        Button(action: onSelect) {
-            VStack(spacing: 14) {
+        VStack(spacing: 14) {
+            // The system card style owns the focus treatment; the label is the
+            // logo plate alone, so the name below stays put while it lifts.
+            Button(action: onSelect) {
                 ZStack {
-                    shape
-                        .fill(Color.white.opacity(liquidGlassCards ? 0.90 : 1))
+                    Color.white.opacity(0.90)
                     if let logo = company.logoURL, let url = URL(string: logo) {
                         AsyncImage(url: url) { phase in
                             if case .success(let image) = phase {
@@ -3216,57 +3207,40 @@ private struct TvDetailsCompanyCard: View {
                                     .scaledToFit()
                                     .padding(16)
                             } else {
-                                Text(company.name)
-                                    .font(.system(size: 20, weight: .semibold))
-                                    .foregroundColor(.black)
-                                    .multilineTextAlignment(.center)
-                                    .padding(12)
+                                nameFallback
                             }
                         }
                     } else {
-                        Text(company.name)
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(.black)
-                            .multilineTextAlignment(.center)
-                            .padding(12)
+                        nameFallback
                     }
                 }
                 .frame(width: 200, height: 100)
-                .clipShape(shape)
-                .modifier(
-                    LiquidGlassCardModifier(
-                        cornerRadius: cardCornerRadius,
-                        isFocused: isFocused,
-                        isEnabled: liquidGlassCards
-                    )
-                )
-                .overlay(
-                    shape.stroke(
-                        isFocused ? AppFocusOutline.color : Color.clear,
-                        lineWidth: isFocused ? AppFocusOutline.width : 0
-                    )
-                )
-
-                Text(company.name)
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundColor(.white.opacity(0.75))
-                    .lineLimit(2)
-                    // Reserve room for the longest label so one-line names do
-                    // not change the vertical position of neighboring cards.
-                    .frame(width: 200, height: 52, alignment: .top)
-                    .multilineTextAlignment(.center)
             }
+            .buttonStyle(.card)
+            .focused($isFocused)
+            .disabled(company.tmdbId == nil)
+
+            Text(company.name)
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(2)
+                // Reserve room for the longest label so one-line names do
+                // not change the vertical position of neighboring cards.
+                .frame(width: 200, height: 52, alignment: .top)
+                .multilineTextAlignment(.center)
         }
-        .buttonStyle(PosterCardButtonStyle())
-        .focused($isFocused)
-        .focusEffectDisabledIfAvailable()
-        .scaleEffect(isFocused ? 1.05 : 1)
-        .animation(.easeOut(duration: 0.14), value: isFocused)
+        .opacity(company.tmdbId == nil ? 0.55 : 1)
         .onChange(of: isFocused) { _, focused in
             if focused { onFocus() }
         }
-        .disabled(company.tmdbId == nil)
-        .opacity(company.tmdbId == nil ? 0.55 : 1)
+    }
+
+    private var nameFallback: some View {
+        Text(company.name)
+            .font(.system(size: 20, weight: .semibold))
+            .foregroundStyle(.black)
+            .multilineTextAlignment(.center)
+            .padding(12)
     }
 }
 
@@ -3463,15 +3437,14 @@ private struct TvDetailsPersonCard: View {
     private static let imageCache = NSCache<NSURL, UIImage>()
 
     var body: some View {
-        Button(action: onSelect) {
-            VStack(spacing: 18) {
+        VStack(spacing: 18) {
+            // A circle cannot use the card style (it clips to a rounded
+            // rectangle); the borderless style lifts the label itself, so the
+            // avatar alone gets the system focus motion.
+            Button(action: onSelect) {
                 Circle()
+                    .fill(Color.white.opacity(0.10))
                     .frame(width: 188, height: 188)
-                    .modifier(TvDetailsGlassBackground(filled: isFocused, shape: Circle()))
-                    .overlay(
-                        Circle()
-                            .strokeBorder(Color.white.opacity(isFocused ? 0.0 : 0.22), lineWidth: 1)
-                    )
                     .overlay {
                         if let profileImage {
                             Image(uiImage: profileImage)
@@ -3482,32 +3455,30 @@ private struct TvDetailsPersonCard: View {
                         } else {
                             Text(initials)
                                 .font(.system(size: 44, weight: .medium))
-                                .foregroundColor(isFocused ? .black : .white)
+                                .foregroundStyle(.white)
                         }
                     }
+            }
+            .buttonStyle(.borderless)
+            .focused($isFocused)
 
-                Text(person.name)
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(isFocused ? .white : .white.opacity(0.74))
+            Text(person.name)
+                .font(.system(size: 24, weight: .medium))
+                .foregroundStyle(isFocused ? .white : .white.opacity(0.74))
+                .lineLimit(1)
+                .frame(width: 210)
+
+            if let role = person.role,
+               !role.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                Text(role)
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(.white.opacity(isFocused ? 0.82 : 0.55))
                     .lineLimit(1)
                     .frame(width: 210)
-
-                if let role = person.role,
-                   !role.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Text(role)
-                        .font(.system(size: 20, weight: .regular))
-                        .foregroundColor(.white.opacity(isFocused ? 0.82 : 0.55))
-                        .lineLimit(1)
-                        .frame(width: 210)
-                }
             }
-            .frame(width: 220)
         }
-        .buttonStyle(PosterCardButtonStyle())
-        .focused($isFocused)
-        .focusEffectDisabledIfAvailable()
-        .scaleEffect(isFocused ? 1.08 : 1)
-        .animation(.easeOut(duration: 0.14), value: isFocused)
+        .frame(width: 220)
+        .animation(NuvioMotion.focus, value: isFocused)
         .onChange(of: isFocused) { _, focused in
             if focused {
                 onFocus()
@@ -3916,23 +3887,12 @@ private struct TvEpisodeCard: View {
     let onMoveDown: () -> Void
     var onMoveUp: (() -> Void)? = nil
 
-    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    private let liquidGlassCards = true
-
     private var cardKey: String { TvEpisodeFocus.card(video.id) }
     private var isFocused: Bool { focus.wrappedValue == cardKey }
 
     private let cardWidth: CGFloat = TvEpisodeCardLayout.width
     private let thumbHeight: CGFloat = 300
     private let cardHeight: CGFloat = TvEpisodeCardLayout.height
-
-    private var episodeCornerRadius: CGFloat {
-        AppCardStyle.episodeCornerRadius(for: cardCornerRadiusSetting)
-    }
-
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: episodeCornerRadius, style: .continuous)
-    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -3957,16 +3917,7 @@ private struct TvEpisodeCard: View {
                         .foregroundColor(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
-                        .background {
-                            if liquidGlassCards {
-                                Capsule()
-                                    .fill(Color.white.opacity(0.14))
-                                    .modifier(LiquidGlassBadgeModifier(cornerRadius: 16))
-                            } else {
-                                Capsule()
-                                    .fill(Color.black.opacity(0.52))
-                            }
-                        }
+                        .background(Color.black.opacity(0.52), in: Capsule())
 
                     Text(video.title)
                         .font(.system(size: 30, weight: .bold))
@@ -4008,56 +3959,16 @@ private struct TvEpisodeCard: View {
                     continueProgressOverlay
                 }
                 .frame(width: cardWidth, height: cardHeight)
-                .background {
-                    if liquidGlassCards {
-                        #if os(tvOS)
-                        if #available(tvOS 26.0, *) {
-                            shape
-                                .fill(isFocused ? Color.white.opacity(0.18) : Color.white.opacity(0.08))
-                                .glassEffect(.regular, in: shape)
-                        } else {
-                            shape
-                                .fill(isFocused ? Color.white.opacity(0.18) : Color.white.opacity(0.08))
-                        }
-                        #else
-                        shape.fill(isFocused ? Color.white.opacity(0.18) : Color.white.opacity(0.08))
-                        #endif
-                    } else {
-                        shape
-                            .fill(isFocused ? Color.white.opacity(0.18) : Color.white.opacity(0.08))
-                    }
-                }
-                .clipShape(shape)
-                .modifier(
-                    LiquidGlassCardModifier(
-                        cornerRadius: episodeCornerRadius,
-                        isFocused: isFocused,
-                        isEnabled: liquidGlassCards
-                    )
-                )
+                .background(Color.white.opacity(0.08))
                 .overlay(alignment: .topTrailing) {
                     if isWatched {
                         WatchedCheckmarkIcon()
                     }
                 }
-                .overlay(
-                    shape.stroke(
-                        isFocused ? AppFocusOutline.color : Color.clear,
-                        lineWidth: isFocused ? AppFocusOutline.width : 0
-                    )
-                )
-                .shadow(
-                    color: Color.black.opacity(isFocused ? 0.45 : 0.22),
-                    radius: isFocused ? 20 : 10,
-                    y: isFocused ? 14 : 6
-                )
             }
-            .buttonStyle(PosterCardButtonStyle())
+            .buttonStyle(.card)
             .focused(focus, equals: cardKey)
-            .focusEffectDisabledIfAvailable()
             .disabled(restrictFocusToKey != nil && restrictFocusToKey != cardKey)
-            .scaleEffect(isFocused ? 1.05 : 1)
-            .animation(.easeOut(duration: 0.14), value: isFocused)
             .onChange(of: isFocused) { _, focused in
                 if focused { onFocus() }
             }
