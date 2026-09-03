@@ -1304,7 +1304,7 @@ struct SettingsView: View {
                 }
             }
         }
-        .padding(.leading, 58)
+        .padding(.leading, NavigationRailMetrics.contentLeading)
         .padding(.trailing, 22)
         .padding(.top, 58)
         .frame(width: 510)

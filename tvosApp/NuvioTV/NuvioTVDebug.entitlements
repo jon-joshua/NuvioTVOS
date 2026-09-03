@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Debug/device builds sign with whatever team the developer has, including
+	     a free personal team, so this file requests no capabilities. The app does
+	     not use push or associated domains, and TopShelfFeed already tolerates a
+	     missing app-group container. Release keeps NuvioTV.entitlements. -->
+</dict>
+</plist>

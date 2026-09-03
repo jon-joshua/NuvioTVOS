@@ -132,6 +132,23 @@ final class CatalogDecodingTests: XCTestCase {
         XCTAssertFalse(PosterArtworkCachePolicy.isVolatile(URL(string: "https://example.com/a.jpg")!))
     }
 
+    func testPosterArtworkCacheVolatileHostsUseShortFreshnessTTL() {
+        let day: TimeInterval = 86_400
+        XCTAssertEqual(
+            PosterArtworkCachePolicy.freshnessTTL(for: URL(string: "https://btttr.cc/a.jpg")!, defaultTTL: day),
+            PosterArtworkCachePolicy.volatileFreshnessTTL
+        )
+        XCTAssertEqual(
+            PosterArtworkCachePolicy.freshnessTTL(for: URL(string: "https://cdn.ratingposterdb.com/a.jpg")!, defaultTTL: day),
+            PosterArtworkCachePolicy.volatileFreshnessTTL
+        )
+        XCTAssertEqual(
+            PosterArtworkCachePolicy.freshnessTTL(for: URL(string: "https://example.com/a.jpg")!, defaultTTL: day),
+            day
+        )
+        XCTAssertLessThan(PosterArtworkCachePolicy.volatileFreshnessTTL, day)
+    }
+
     func testCollectionFolderPreservesTmdbAndTraktSources() throws {
         let json = """
         {

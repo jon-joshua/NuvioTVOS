@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Same poster geometry as the See All catalog, Grid Home, and Search. Seven
 /// columns fit only because of `pageInset` — the old 80pt inset left room for six.
-private enum LibraryGridMetrics {
+enum LibraryGridMetrics {
     static let posterWidth: CGFloat = 210
     static let posterHeight: CGFloat = 315
     static let posterGap: CGFloat = 28
@@ -232,7 +232,8 @@ public struct LibraryView: View {
                     cloudContent
                 }
             }
-            .padding(.horizontal, LibraryGridMetrics.pageInset)
+            .padding(.leading, NavigationRailMetrics.contentLeading)
+            .padding(.trailing, LibraryGridMetrics.pageInset)
             .padding(.top, 56)
             .ignoresSafeArea(edges: .bottom)
         }
@@ -319,8 +320,7 @@ public struct LibraryView: View {
                             LibraryItemButton(
                                 item: item,
                                 externalFocus: $focusedItemID,
-                                retainFocusAppearance: overlayRestoreItemID == item.id,
-                                onLongPress: onLongPress.map { cb in { cb(item.asNuvioMeta) } }
+                                retainFocusAppearance: overlayRestoreItemID == item.id
                             ) {
                                 overlayRestoreItemID = item.id
                                 lastFocusedItemID = item.id
@@ -626,107 +626,6 @@ public struct LibraryView: View {
     }
 }
 
-struct LibraryItemButton: View {
-    let item: StremioMeta
-    var externalFocus: FocusState<String?>.Binding? = nil
-    var retainFocusAppearance = false
-    var onLongPress: (() -> Void)? = nil
-    let action: () -> Void
-
-    @FocusState private var isFocused: Bool
-    @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
-    @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 12) {
-                CachedPosterArtwork(
-                    urlString: item.poster,
-                    width: LibraryGridMetrics.posterWidth,
-                    height: LibraryGridMetrics.posterHeight,
-                    maximumWidth: LibraryGridMetrics.posterWidth
-                ) {
-                    ZStack {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.07))
-                        Image(systemName: item.contentType == "series" ? "tv" : "film")
-                            .font(.system(size: 40))
-                            .foregroundColor(.white.opacity(0.25))
-                    }
-                }
-                .frame(width: LibraryGridMetrics.posterWidth, height: LibraryGridMetrics.posterHeight)
-                .clipShape(RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
-                .modifier(
-                    LiquidGlassCardModifier(
-                        cornerRadius: cardCornerRadius,
-                        isFocused: showsFocusedAppearance,
-                        isEnabled: liquidGlassCards
-                    )
-                )
-                .overlay(alignment: .topTrailing) {
-                    WatchedCheckmarkBadge(metaId: item.id, type: item.contentType)
-                }
-                .overlay(
-                    RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-                        .stroke(showsFocusedAppearance ? focusBorderColor : Color.clear, lineWidth: focusHighlighter ? AppFocusOutline.emphasizedWidth : AppFocusOutline.width)
-                )
-                .shadow(color: .black.opacity(showsFocusedAppearance ? 0.5 : 0.2), radius: showsFocusedAppearance ? 16 : 6)
-                
-                if posterLabels {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(item.name)
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(showsFocusedAppearance ? .white : .white.opacity(0.78))
-                            .lineLimit(1)
-                        Text(subtitle)
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.white.opacity(0.45))
-                            .lineLimit(1)
-                    }
-                    .frame(width: LibraryGridMetrics.posterWidth, alignment: .leading)
-                }
-            }
-            .scaleEffect(showsFocusedAppearance ? 1.06 : 1.0)
-        }
-        .buttonStyle(PosterCardButtonStyle())
-        .focused($isFocused)
-        .modifier(ExternalFocusBinding(binding: externalFocus, id: item.id))
-        .focusEffectDisabledIfAvailable()
-        .titleActionsContextMenu(
-            meta: item.asNuvioMeta,
-            onOpenDetails: action
-        )
-        .animation(smoothFocus ? .spring(response: 0.28, dampingFraction: 0.75) : nil, value: showsFocusedAppearance)
-        .zIndex(showsFocusedAppearance ? 1 : 0)
-    }
-
-    private var subtitle: String {
-        let typeLabel = item.contentType == "series"
-            ? L10n.string("type_series", fallback: "Series")
-            : L10n.string("type_movie", fallback: "Movie")
-        var parts = [typeLabel]
-        if let year = item.year { parts.append(String(year)) }
-        if let rating = item.imdbRating.flatMap(Double.init), rating > 0 {
-            parts.append(String(format: "★ %.1f", rating))
-        }
-        return parts.joined(separator: "  ·  ")
-    }
-
-    private var focusBorderColor: Color {
-        AppFocusOutline.color
-    }
-
-    private var showsFocusedAppearance: Bool {
-        isFocused || retainFocusAppearance
-    }
-
-    private var cardCornerRadius: CGFloat {
-        AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16)
-    }
-}
 
 extension StremioMeta {
     /// Minimal NuvioMeta for the quick-actions menu (title + library/watched
