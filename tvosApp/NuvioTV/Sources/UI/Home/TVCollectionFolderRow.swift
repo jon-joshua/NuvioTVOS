@@ -65,8 +65,6 @@ struct TVCollectionFolderRow: View {
     let onScrollIndexChange: (Int) -> Void
     let initialFocusCardKey: String?
     var externalFocus: FocusState<String?>.Binding? = nil
-    var restrictFocusToCardKey: String? = nil
-    var retainFocusAppearanceForCardKey: String? = nil
     var suppressFocusAnimations = false
     var isRowFocused = false
     let onInitialFocusRequested: () -> Void
@@ -124,11 +122,10 @@ struct TVCollectionFolderRow: View {
             if coveredWidth >= stripWidth { break }
         }
 
-        // A restored focus target must be mounted even if the persisted scroll
+        // The initial focus target must be mounted even if the persisted scroll
         // index has not caught up with it yet.
         let rowPrefix = "\(id)\u{1}"
-        for key in [initialFocusCardKey, restrictFocusToCardKey] {
-            guard let key, key.hasPrefix(rowPrefix) else { continue }
+        if let key = initialFocusCardKey, key.hasPrefix(rowPrefix) {
             let folderID = String(key.dropFirst(rowPrefix.count))
             if let targetIndex = folders.firstIndex(where: { $0.id == folderID }) {
                 lowerBound = min(lowerBound, targetIndex)
@@ -200,14 +197,10 @@ struct TVCollectionFolderRow: View {
                         showPosterLabels: rowPosterLabels,
                         smoothFocusAnimations: rowSmoothFocus,
                         focusHighlighterEnabled: rowFocusHighlighter,
-                        retainFocusAppearance: retainFocusAppearanceForCardKey == cardKey,
                         allowsFocus: true,
                         onSelect: { onSelect(folder) }
                     )
-                    .disabled(
-                        (restrictFocusToCardKey != nil && restrictFocusToCardKey != cardKey)
-                            || (!isRowFocused && index != effectiveScrollIndex)
-                    )
+                    .disabled(!isRowFocused && index != effectiveScrollIndex)
                 }
             }
             .padding(
@@ -245,16 +238,6 @@ struct TVCollectionFolderRow: View {
 // vertical window to swap lightweight shells for real folder cards.
 extension TVCollectionFolderRow: Equatable {
     static func == (lhs: TVCollectionFolderRow, rhs: TVCollectionFolderRow) -> Bool {
-        let lhsRestrictInRow = lhs.restrictFocusToCardKey?.hasPrefix("\(lhs.id)\u{1}") == true
-        let rhsRestrictInRow = rhs.restrictFocusToCardKey?.hasPrefix("\(rhs.id)\u{1}") == true
-        let restrictEqual = (lhsRestrictInRow == rhsRestrictInRow)
-            && (!lhsRestrictInRow || lhs.restrictFocusToCardKey == rhs.restrictFocusToCardKey)
-
-        let lhsRetainInRow = lhs.retainFocusAppearanceForCardKey?.hasPrefix("\(lhs.id)\u{1}") == true
-        let rhsRetainInRow = rhs.retainFocusAppearanceForCardKey?.hasPrefix("\(rhs.id)\u{1}") == true
-        let retainEqual = (lhsRetainInRow == rhsRetainInRow)
-            && (!lhsRetainInRow || lhs.retainFocusAppearanceForCardKey == rhs.retainFocusAppearanceForCardKey)
-
         return lhs.id == rhs.id
             && lhs.title == rhs.title
             && lhs.horizontalEdgeInset == rhs.horizontalEdgeInset
@@ -262,8 +245,6 @@ extension TVCollectionFolderRow: Equatable {
             && lhs.folders == rhs.folders
             && lhs.initialScrollIndex == rhs.initialScrollIndex
             && lhs.initialFocusCardKey == rhs.initialFocusCardKey
-            && restrictEqual
-            && retainEqual
             && lhs.suppressFocusAnimations == rhs.suppressFocusAnimations
             && lhs.isRowFocused == rhs.isRowFocused
     }
@@ -281,7 +262,6 @@ private struct TVCollectionFolderCard: View {
     var showPosterLabels: Bool = false
     var smoothFocusAnimations: Bool = true
     var focusHighlighterEnabled: Bool = false
-    var retainFocusAppearance: Bool = false
     var allowsFocus = true
     let onSelect: () -> Void
 
@@ -289,7 +269,7 @@ private struct TVCollectionFolderCard: View {
     @State private var didRequestInitialFocus = false
     private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
 
-    private var showFocus: Bool { isFocused || retainFocusAppearance }
+    private var showFocus: Bool { isFocused }
 
     /// All shapes share the same height; landscape/square only widen.
     private var cardWidth: CGFloat {

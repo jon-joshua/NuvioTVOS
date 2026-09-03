@@ -291,7 +291,6 @@ struct DiscoverCard: View {
     let meta: NuvioMeta
     var externalFocus: FocusState<String?>.Binding? = nil
     var onFocusChange: ((Bool) -> Void)? = nil
-    var retainFocusAppearance = false
     let action: () -> Void
     @FocusState private var focused: Bool
     @Environment(\.posterChromeStyle) private var chrome
@@ -377,14 +376,13 @@ struct DiscoverCard: View {
     }
 
     private var showsFocusedAppearance: Bool {
-        focused || retainFocusAppearance
+        focused
     }
 }
 
 struct LibraryItemButton: View {
     let item: StremioMeta
     var externalFocus: FocusState<String?>.Binding? = nil
-    var retainFocusAppearance = false
     let action: () -> Void
 
     @FocusState private var isFocused: Bool
@@ -452,7 +450,7 @@ struct LibraryItemButton: View {
     }
 
     private var showsFocusedAppearance: Bool {
-        isFocused || retainFocusAppearance
+        isFocused
     }
 }
 

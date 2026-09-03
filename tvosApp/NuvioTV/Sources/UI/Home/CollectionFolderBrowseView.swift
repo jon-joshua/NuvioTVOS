@@ -49,12 +49,9 @@ struct CollectionFolderBrowseView: View {
     @State private var selectedTabIndex = 0
     @FocusState private var focusedItemID: String?
     @FocusState private var isLoadingFocusActive: Bool
-    @State private var lastFocusedItemID: String?
-    @State private var focusRestoreGeneration = 0
     @State private var watchedTitleKeys: Set<String> = []
     @State private var cachedCollectionMetadata: [String: NuvioMeta] = [:]
     @State private var collectionEnrichmentTask: Task<Void, Never>?
-    @Environment(\.isEnabled) private var isEnabled
     @AppStorage(SettingsKey.amoled) private var amoled = false
     @AppStorage(SettingsKey.bodyColor) private var bodyColor = SettingsBackground.charcoal.rawValue
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
@@ -136,30 +133,11 @@ struct CollectionFolderBrowseView: View {
         .onReceive(NotificationCenter.default.publisher(for: WatchedStore.changedNotification)) { _ in
             refreshWatchedTitles()
         }
-        .onChange(of: focusedItemID) { _, newValue in
-            if let newValue { lastFocusedItemID = newValue }
-        }
         .onChange(of: isLoading) { _, loading in
             if loading {
                 requestLoadingFocusIfNeeded()
             } else {
                 isLoadingFocusActive = false
-            }
-        }
-        .onChange(of: isEnabled) { _, enabled in
-            if !enabled {
-                focusRestoreGeneration &+= 1
-                if let focusedItemID { lastFocusedItemID = focusedItemID }
-            } else if let target = lastFocusedItemID {
-                let generation = focusRestoreGeneration
-                DispatchQueue.main.async {
-                    guard focusRestoreGeneration == generation else { return }
-                    focusedItemID = target
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    guard focusRestoreGeneration == generation else { return }
-                    focusedItemID = target
-                }
             }
         }
     }

@@ -43,7 +43,10 @@ public struct LibraryView: View {
     @State private var lastFocusedCloudItemID: String?
     @State private var shouldRestoreCloudFocus = false
     @State private var restoreCloudArmTask: Task<Void, Never>?
-    @State private var overlayRestoreCloudItemID: String?
+    /// While set, only this cloud row is focusable: opening or closing a cloud
+    /// item swaps the list in place, and this keeps the focus engine from
+    /// landing on the first row while the intended one mounts.
+    @State private var cloudFocusLockKey: String?
 
     @FocusState private var focusedItemID: String?
     /// Last card focused in the grid, kept so returning from details (which
@@ -55,11 +58,6 @@ public struct LibraryView: View {
     /// `focusedItemID` to nil while the next lazy cell materializes, and
     /// arming instantly on that blip bounces focus back to the previous card.
     @State private var restoreArmTask: Task<Void, Never>?
-    /// Card to actively re-focus once the Details overlay dismisses; captured
-    /// when the tab view gets disabled (overlay up), consumed on re-enable.
-    @State private var overlayRestoreItemID: String?
-    @State private var overlayRestoreGeneration = 0
-    @Environment(\.isEnabled) private var isEnabled
     @AppStorage(SettingsKey.amoled) private var amoled = false
     @AppStorage(SettingsKey.bodyColor) private var bodyColor = SettingsBackground.charcoal.rawValue
     @AppStorage(SettingsKey.debridProvider) private var debridProvider = "None"
@@ -115,7 +113,7 @@ public struct LibraryView: View {
                         }
                     }
                 }
-                .disabled(overlayRestoreItemID != nil || overlayRestoreCloudItemID != nil)
+                .disabled(cloudFocusLockKey != nil)
 
                 // Controls row (Dynamic based on Saved vs Cloud)
                 HStack(spacing: 16) {
@@ -223,7 +221,7 @@ public struct LibraryView: View {
                         }
                     }
                 }
-                .disabled(overlayRestoreItemID != nil || overlayRestoreCloudItemID != nil)
+                .disabled(cloudFocusLockKey != nil)
                 .zIndex(1)
 
                 if sourceMode == .saved {
@@ -247,8 +245,6 @@ public struct LibraryView: View {
                 restoreArmTask?.cancel()
                 lastFocusedItemID = newValue
                 shouldRestoreFocus = false
-                // Restoration complete -- lift the focus restriction.
-                if isEnabled, newValue == overlayRestoreItemID { overlayRestoreItemID = nil }
             } else if lastFocusedItemID != nil {
                 scheduleRestoreArm()
             }
@@ -258,27 +254,11 @@ public struct LibraryView: View {
                 restoreCloudArmTask?.cancel()
                 lastFocusedCloudItemID = newValue
                 shouldRestoreCloudFocus = false
-                if isEnabled, newValue == overlayRestoreCloudItemID { overlayRestoreCloudItemID = nil }
+                // The drill-down lock (see `openCloudItemEntry`) lifts once the
+                // intended row actually takes focus.
+                if newValue == cloudFocusLockKey { cloudFocusLockKey = nil }
             } else if lastFocusedCloudItemID != nil {
                 scheduleRestoreCloudArm()
-            }
-        }
-        // Overlay dismissal re-places focus geometrically without consulting
-        // `defaultFocus`. While `overlayRestoreItemID` / `overlayRestoreCloudItemID`
-        // is set every other card is unfocusable, so the engine can only land back
-        // on the saved item -- no scroll-to-top flash.
-        .onChange(of: isEnabled) { _, enabled in
-            if !enabled {
-                overlayRestoreGeneration &+= 1
-                overlayRestoreItemID = focusedItemID ?? lastFocusedItemID
-                overlayRestoreCloudItemID = cloudFocusedKey ?? lastFocusedCloudItemID
-            } else {
-                if let target = overlayRestoreItemID {
-                    restoreOverlayFocus(to: target, generation: overlayRestoreGeneration)
-                }
-                if let cloudTarget = overlayRestoreCloudItemID {
-                    restoreCloudOverlayFocus(to: cloudTarget, generation: overlayRestoreGeneration)
-                }
             }
         }
         .task {
@@ -319,14 +299,11 @@ public struct LibraryView: View {
                         ForEach(viewModel.sortedAndGroupedItems[group] ?? [], id: \.id) { item in
                             LibraryItemButton(
                                 item: item,
-                                externalFocus: $focusedItemID,
-                                retainFocusAppearance: overlayRestoreItemID == item.id
+                                externalFocus: $focusedItemID
                             ) {
-                                overlayRestoreItemID = item.id
                                 lastFocusedItemID = item.id
                                 onContentClick(item.id, item.contentType)
                             }
-                            .disabled(overlayRestoreItemID != nil && overlayRestoreItemID != item.id)
                         }
                     }
                 }
@@ -410,14 +387,14 @@ public struct LibraryView: View {
                         subtitle: cloudItemSubtitle(for: item),
                         externalFocus: $cloudFocusedKey,
                         focusId: item.stableKey,
-                        retainFocusAppearance: overlayRestoreCloudItemID == item.stableKey,
+                        retainFocusAppearance: cloudFocusLockKey == item.stableKey,
                         isBusy: false
                     ) {
-                        overlayRestoreCloudItemID = item.stableKey
+                        cloudFocusLockKey = item.stableKey
                         lastFocusedCloudItemID = item.stableKey
                         openCloudItemEntry(item)
                     }
-                    .disabled(overlayRestoreCloudItemID != nil && overlayRestoreCloudItemID != item.stableKey)
+                    .disabled(cloudFocusLockKey != nil && cloudFocusLockKey != item.stableKey)
                 }
             }
             .padding(.top, 16)
@@ -462,16 +439,16 @@ public struct LibraryView: View {
                         subtitle: CloudLibraryView.sizeText(file.sizeBytes),
                         externalFocus: $cloudFocusedKey,
                         focusId: key,
-                        retainFocusAppearance: overlayRestoreCloudItemID == key,
+                        retainFocusAppearance: cloudFocusLockKey == key,
                         isBusy: cloudViewModel.resolvingKey == key
                     ) {
-                        overlayRestoreCloudItemID = key
+                        cloudFocusLockKey = key
                         lastFocusedCloudItemID = key
                         cloudViewModel.play(item: item, file: file) { url, meta in
                             onPlayCloudFile?(url, meta)
                         }
                     }
-                    .disabled(overlayRestoreCloudItemID != nil && overlayRestoreCloudItemID != key)
+                    .disabled(cloudFocusLockKey != nil && cloudFocusLockKey != key)
                 }
             }
             .padding(.top, 16)
@@ -506,7 +483,7 @@ public struct LibraryView: View {
         } else if !playable.isEmpty {
             openCloudItem = item
             let firstKey = "\(item.stableKey):\(playable[0].id)"
-            overlayRestoreCloudItemID = firstKey
+            cloudFocusLockKey = firstKey
             lastFocusedCloudItemID = firstKey
             shouldRestoreCloudFocus = true
             cloudFocusedKey = firstKey
@@ -518,8 +495,8 @@ public struct LibraryView: View {
                 }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                if overlayRestoreCloudItemID == firstKey {
-                    overlayRestoreCloudItemID = nil
+                if cloudFocusLockKey == firstKey {
+                    cloudFocusLockKey = nil
                 }
             }
         }
@@ -529,7 +506,7 @@ public struct LibraryView: View {
         let key = openCloudItem?.stableKey
         openCloudItem = nil
         if let key {
-            overlayRestoreCloudItemID = key
+            cloudFocusLockKey = key
             lastFocusedCloudItemID = key
             shouldRestoreCloudFocus = true
             cloudFocusedKey = key
@@ -541,8 +518,8 @@ public struct LibraryView: View {
                 }
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                if overlayRestoreCloudItemID == key {
-                    overlayRestoreCloudItemID = nil
+                if cloudFocusLockKey == key {
+                    cloudFocusLockKey = nil
                 }
             }
         }
@@ -568,36 +545,6 @@ public struct LibraryView: View {
             try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled, cloudFocusedKey == nil else { return }
             shouldRestoreCloudFocus = true
-        }
-    }
-
-    private func restoreOverlayFocus(to target: String, generation: Int) {
-        for delay in [0.12, 0.45] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                if overlayRestoreGeneration == generation, overlayRestoreItemID == target {
-                    focusedItemID = target
-                }
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if overlayRestoreGeneration == generation, overlayRestoreItemID == target {
-                overlayRestoreItemID = nil
-            }
-        }
-    }
-
-    private func restoreCloudOverlayFocus(to target: String, generation: Int) {
-        for delay in [0.12, 0.45] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                if overlayRestoreGeneration == generation, overlayRestoreCloudItemID == target {
-                    cloudFocusedKey = target
-                }
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if overlayRestoreGeneration == generation, overlayRestoreCloudItemID == target {
-                overlayRestoreCloudItemID = nil
-            }
         }
     }
 

@@ -5,13 +5,6 @@ import ImageIO
 import OSLog
 
 private final class TVHomeFocusWork {
-    var defersOverlayPreparation = false
-    var pendingOverlayRestoreCardID: String?
-    /// Remains set until the restored card's actual focus callback runs. The
-    /// shared FocusState can be updated before that callback, so it cannot be
-    /// used as the restore-in-progress marker by itself.
-    var restoringOverlayCardID: String?
-    var restoreReleaseTask: Task<Void, Never>?
     var pendingFocusedMeta: NuvioMeta?
     var pendingFocusedFolder: TVCollectionFolderItem?
     var pendingSectionId: String?
@@ -21,19 +14,14 @@ private final class TVHomeFocusWork {
     var landscapeFocusTask: Task<Void, Never>?
 
     func cancelAll() {
-        restoreReleaseTask?.cancel()
         focusSettleTask?.cancel()
         landscapeFocusTask?.cancel()
-        restoreReleaseTask = nil
         focusSettleTask = nil
         landscapeFocusTask = nil
         pendingFocusedMeta = nil
         pendingFocusedFolder = nil
         pendingSectionId = nil
         pendingLandscapeFocusedId = nil
-        defersOverlayPreparation = false
-        pendingOverlayRestoreCardID = nil
-        restoringOverlayCardID = nil
     }
 }
 
@@ -72,11 +60,6 @@ struct TVHomeView: View {
     /// mounted and keeps its focus underneath; this only defers a catalog
     /// reload so rows are not replaced while tvOS is restoring that focus.
     let isCovered: Bool
-    /// Overlay-return focus restoration is native now that Home is covered by
-    /// a pushed screen rather than hidden. These keep the legacy restore path
-    /// compiled but unreachable until it is deleted.
-    private var isFullScreenOverlayPresented: Bool { false }
-    private let detailsDidDisappearGeneration: UInt = 0
     /// True while a freshly picked profile is being prepared. Keeps Home's own
     /// loader on screen for that whole beat, so the switch shows one screen
     /// instead of a cover handing over to a spinner.
@@ -165,7 +148,6 @@ struct TVHomeView: View {
     @State private var didRequestInitialCardFocus = false
     @State private var didPrepareInitialFocusViewport = false
     @State private var pendingInitialFocusCardKey: String?
-    @State private var shouldRestoreHomeFocus = false
     /// Memo for the Hide Unreleased pass over add-on rows. Filtering allocates a
     /// fresh items buffer per row, which defeats the buffer-identity fast path in
     /// `HomePosterRow.==` and turns every focus update into a field-by-field
@@ -194,22 +176,6 @@ struct TVHomeView: View {
             return result
         }
     }
-    /// Keeps the one externally bound card structurally unchanged while focus
-    /// crosses between Home and the adaptive sidebar. This does not request
-    /// focus; it only prevents removing/re-adding `.focused` around the artwork.
-    @State private var retainedFocusBindingCardID: String?
-    /// Card to actively re-focus once the Details/Player overlay dismisses.
-    /// Captured when the tab view gets disabled (overlay up), consumed when it
-    /// is re-enabled. See `restoreOverlayFocus`.
-    @State private var overlayRestoreCardID: String?
-    /// Increments for every overlay presentation. Delayed focus callbacks from
-    /// an older Details/Player return must never clear the next return's focus
-    /// lock when the user opens the same card twice in quick succession.
-    @State private var overlayRestoreGeneration = 0
-    /// Row order as of the last render, so a card that leaves Continue Watching
-    /// can be traced back to the slot it occupied. See the retarget below.
-    @State private var continueWatchingCardIDs: [String] = []
-    @Environment(\.isEnabled) private var isEnabled
     @Environment(\.navigationRailShift) private var railShift
     @State private var focusedRowIndex = 0
     /// The Grid hero owns its own focus state, so `focusedCardID` goes nil while
@@ -228,7 +194,7 @@ struct TVHomeView: View {
     @FocusState private var focusedCardID: String?
 
     var body: some View {
-        let _ = TVHomeDebugTrace.log("home.body.render active=\(isActive) isEnabled=\(isEnabled)")
+        let _ = TVHomeDebugTrace.log("home.body.render active=\(isActive) covered=\(isCovered)")
         withFocusHandlers(withLifecycleHandlers(withSettingsHandlers(withLoadHandlers(homeContent))))
     }
 
@@ -326,13 +292,6 @@ struct TVHomeView: View {
         // to Home does not reliably produce another onAppear.
         .onChange(of: isActive) { _, active in
             if active {
-                // A tab switch can also toggle the environment's `isEnabled`.
-                // That is not an overlay dismissal, so discard any focus lock
-                // accidentally captured while Home was becoming inactive.
-                if overlayRestoreCardID != nil {
-                    overlayRestoreGeneration &+= 1
-                    overlayRestoreCardID = nil
-                }
                 // Usually armed while leaving Home. Re-arm here as a fallback
                 // for TabView implementations that recreate the selected tab.
                 if !suppressReturnFocusAnimations {
@@ -349,14 +308,7 @@ struct TVHomeView: View {
                 } else {
                     refreshContinueWatching()
                 }
-                #if DEBUG
-                logRowWindow("home became active")
-                #endif
             } else {
-                // Details and Player leave Home selected; a real tab change
-                // must never carry their one-card restoration lock back Home.
-                overlayRestoreGeneration &+= 1
-                overlayRestoreCardID = nil
                 // Android disposes Home's composition on a tab switch, which
                 // cancels screen-scoped work. Mirror that cancellation while
                 // keeping the shared Home store warm for the next entry.
@@ -495,85 +447,32 @@ struct TVHomeView: View {
                     return
                 }
                 store.lastFocusedCardID = newValue
-                // `@State` invalidates on every write, even to an equal value,
-                // and this runs on every focus move.
-                if shouldRestoreHomeFocus { shouldRestoreHomeFocus = false }
                 if isActive {
                     releaseReturnFocusAnimationSuppression()
                 }
-                if isEnabled,
-                   newValue == overlayRestoreCardID,
-                   focusWork.restoringOverlayCardID != newValue {
-                    overlayRestoreCardID = nil
-                }
-            } else if !focusWork.defersOverlayPreparation,
-                      store.lastFocusedCardID != nil {
-                shouldRestoreHomeFocus = true
             }
         }
-        // Visible menus still toggle Home's disabled environment. Full-screen
-        // overlays do not: their opacity-zero Home tree is already unfocusable,
-        // and handling the overlay transition directly avoids invalidating all
-        // resident shelves on Details entry.
-        .onChange(of: isEnabled) { _, enabled in
-            TVHomeDebugTrace.log(
-                "home.overlay.isEnabled changed to \(enabled) active=\(isActive) defersPrep=\(focusWork.defersOverlayPreparation)"
-            )
-            // Full-screen transitions have their own handler below. This one
-            // remains for the visible card-menu path and inactive TabView tabs.
-            guard !isFullScreenOverlayPresented else { return }
-            handleHomeOverlayStateChange(isPresented: !enabled)
-        }
-        .onChange(of: isFullScreenOverlayPresented) { _, presented in
-            TVHomeDebugTrace.log(
-                "home.overlay.fullScreen changed to \(presented) active=\(isActive) defersPrep=\(focusWork.defersOverlayPreparation)"
-            )
-            handleHomeOverlayStateChange(isPresented: presented)
-        }
-        .onChange(of: detailsDidDisappearGeneration) { _, generation in
-            guard !isFullScreenOverlayPresented else { return }
-            guard let target = overlayRestoreCardID,
-                  focusWork.restoringOverlayCardID == target else { return }
-            TVHomeDebugTrace.log(
-                "home.details.disappeared generation=\(generation) restoring target=\(target)"
-            )
-            // Details is now out of the hierarchy, so this is the first focus
-            // request that tvOS can actually commit. The card's focus callback
-            // will release the one-card lock on the next run-loop turn.
-            focusedCardID = target
-        }
-        // Removing a card takes the focus capture with it: the restore target
-        // still names the card that just left, and because every other card is
-        // unfocusable while a capture stands, focus lands nowhere at all. Hand
-        // the slot to whatever moved into it instead.
-        .onChange(of: continueWatchingIDs) { _, ids in
-            let previous = continueWatchingCardIDs
-            continueWatchingCardIDs = ids
-            guard let target = overlayRestoreCardID,
-                  let removedID = continueWatchingMetaID(inCardKey: target),
+        // A card that leaves Continue Watching while Home is covered (played to
+        // the end, removed) cannot take focus back on return, and tvOS then
+        // places focus geometrically. Retarget the saved key to whatever moved
+        // into its slot so the row's default focus lands beside where the user
+        // was instead of at the first card.
+        .onChange(of: continueWatchingIDs) { previous, ids in
+            guard let saved = store.lastFocusedCardID,
+                  let removedID = continueWatchingMetaID(inCardKey: saved),
                   !ids.contains(removedID),
                   let removedIndex = previous.firstIndex(of: removedID) else { return }
-
-            // Invalidates the in-flight restores aimed at the removed card:
-            // they only write focus while their own generation is current.
-            overlayRestoreGeneration &+= 1
             guard !ids.isEmpty else {
-                // Row is gone entirely. Drop the capture so the engine can place
-                // focus itself rather than leaving every card disabled behind a
-                // target that will never exist.
-                overlayRestoreCardID = nil
+                // Row is gone entirely; let the engine place focus itself.
+                store.lastFocusedCardID = nil
                 return
             }
-            // The card that shifted into the slot, or the new last card when the
-            // removed one was at the end.
-            let successorID = ids[min(removedIndex, ids.count - 1)]
-            let sectionPrefix = target.hasPrefix("\(TVHomeSection.upcomingId)\u{1}")
+            let successorIndex = min(removedIndex, ids.count - 1)
+            let sectionPrefix = saved.hasPrefix("\(TVHomeSection.upcomingId)\u{1}")
                 ? TVHomeSection.upcomingId
                 : TVHomeSection.continueWatchingId
-            let successorKey = "\(sectionPrefix)\u{1}\(successorID)"
-            overlayRestoreCardID = successorKey
-            store.lastFocusedCardID = successorKey
-            restoreOverlayFocus(to: successorKey, generation: overlayRestoreGeneration)
+            store.lastFocusedCardID = "\(sectionPrefix)\u{1}\(ids[successorIndex])"
+            rowScrollStore.setIndex(successorIndex, for: sectionPrefix)
         }
     }
 
@@ -741,8 +640,6 @@ resetGeneration: rowResetGeneration,
                                                 },
                                                 initialFocusCardKey: initialFocusCardKey,
                                                 externalFocus: $focusedCardID,
-                                                restrictFocusToCardKey: overlayRestoreCardID,
-                                                retainFocusAppearanceForCardKey: overlayRestoreCardID,
                                                 suppressFocusAnimations: suppressReturnFocusAnimations
                                                     && focusedRowIndex == index,
                                                 isRowFocused: focusedRowIndex == index,
@@ -751,9 +648,6 @@ resetGeneration: rowResetGeneration,
                                                 },
                                                 onFocus: { folder in
                                                     let cardKey = "\(section.id)\u{1}\(folder.id)"
-                                                    if focusWork.restoringOverlayCardID == cardKey {
-                                                        completeOverlayFocusRestore(for: cardKey)
-                                                    }
                                                     let changedRow = focusedRowIndex != index
                                                     // Only a row change needs a vertical scroll. A
                                                     // horizontal move within the row used to issue a
@@ -791,8 +685,6 @@ resetGeneration: rowResetGeneration,
                                                 initialFocusCardKey: initialFocusCardKey,
                                                 landscapeFocusedId: landscapeFocusedId(for: section.id),
                                                 externalFocus: $focusedCardID,
-                                                restrictFocusToCardKey: overlayRestoreCardID,
-                                                retainFocusAppearanceForCardKey: overlayRestoreCardID,
                                                 suppressFocusAnimations: suppressReturnFocusAnimations
                                                     && focusedRowIndex == index,
                                                 isRowFocused: focusedRowIndex == index,
@@ -807,9 +699,6 @@ resetGeneration: rowResetGeneration,
                                                         "home.focus.begin section=\(section.id) meta=\(meta.id) "
                                                             + "changedRow=\(changedRow) fromRow=\(focusedRowIndex) toRow=\(index)"
                                                     )
-                                                    if focusWork.restoringOverlayCardID == cardKey {
-                                                        completeOverlayFocusRestore(for: cardKey)
-                                                    }
                                                     // Only a row change needs a vertical scroll; see the
                                                     // folder-row handler above for why the horizontal
                                                     // case no longer calls scrollTo.
@@ -915,7 +804,7 @@ resetGeneration: rowResetGeneration,
                     // focus, so the first Menu press can still reach the sidebar,
                     // while returning from the sidebar restores the saved card.
                     .focusSection()
-                    .defaultFocusIfAvailable($focusedCardID, store.lastFocusedCardID ?? focusWork.pendingOverlayRestoreCardID)
+                    .defaultFocusIfAvailable($focusedCardID, store.lastFocusedCardID)
                 }
             }
             // Ignore the bottom safe-area inset too, so the scrolling rows window
@@ -956,137 +845,6 @@ resetGeneration: rowResetGeneration,
             return String(key.dropFirst(upPrefix.count))
         }
         return nil
-    }
-
-    /// Handles focus capture for both visible menus and full-screen overlays.
-    /// Full-screen presentation intentionally does not toggle Home's disabled
-    /// environment, so this transition hook replaces the old Details-specific
-    /// `isEnabled` callback without rebuilding every resident shelf.
-    private func handleHomeOverlayStateChange(isPresented: Bool) {
-        // TabView may disable an unselected Home tab. Only overlay restoration
-        // while Home remains selected should touch the saved focus target.
-        guard isActive else {
-            overlayRestoreGeneration &+= 1
-            overlayRestoreCardID = nil
-            return
-        }
-
-        if isPresented {
-            // Direct Home → Details navigation already captured the target in
-            // reference storage. Avoid publishing the one-card lock now; doing
-            // so would rebuild every resident shelf before Details can draw.
-            if focusWork.defersOverlayPreparation {
-                TVHomeDebugTrace.log("home.overlay.presentation deferring preparation")
-                focusWork.landscapeFocusTask?.cancel()
-                focusWork.pendingLandscapeFocusedId = nil
-                focusWork.focusSettleTask?.cancel()
-                return
-            }
-
-            // For visible menus and non-Home overlay entry, capture the target
-            // before focus is removed so the return path cannot jump to the
-            // first card.
-            armReturnFocusAnimationSuppression()
-            overlayRestoreGeneration &+= 1
-            let target = focusedCardID ?? store.lastFocusedCardID
-            TVHomeDebugTrace.log("home.overlay.presentation setting target=\(target ?? "nil")")
-            overlayRestoreCardID = target
-        } else if focusWork.defersOverlayPreparation {
-            let target = focusWork.pendingOverlayRestoreCardID
-            focusWork.defersOverlayPreparation = false
-            focusWork.pendingOverlayRestoreCardID = nil
-            guard let target else {
-                TVHomeDebugTrace.log("home.overlay.dismissal defersPrep with nil target")
-                return
-            }
-
-            // Build the restriction only on return. Details is no longer
-            // competing with this Home render, and delayed focus writes run
-            // after the target modifier is mounted.
-            armReturnFocusAnimationSuppression()
-            overlayRestoreGeneration &+= 1
-            TVHomeDebugTrace.log("home.overlay.dismissal restoring to target=\(target) gen=\(overlayRestoreGeneration)")
-            overlayRestoreCardID = target
-            restoreOverlayFocus(
-                to: target,
-                generation: overlayRestoreGeneration,
-                waitForDetailsDisappearance: true
-            )
-        } else if let target = overlayRestoreCardID {
-            TVHomeDebugTrace.log("home.overlay.dismissal fallback restoring to target=\(target) gen=\(overlayRestoreGeneration)")
-            restoreOverlayFocus(to: target, generation: overlayRestoreGeneration)
-        }
-    }
-
-    private func restoreOverlayFocus(
-        to target: String,
-        generation: Int,
-        waitForDetailsDisappearance: Bool = false
-    ) {
-        TVHomeDebugTrace.log(
-            "home.restoreOverlayFocus begin target=\(target) gen=\(generation) "
-                + "waitForDetailsDisappearance=\(waitForDetailsDisappearance)"
-        )
-        focusWork.restoringOverlayCardID = target
-
-        if waitForDetailsDisappearance {
-            // The Details view is still mounted at this point. Its actual
-            // onDisappear callback will issue the first focus request that
-            // tvOS can commit; timer writes here only create a visible delay.
-            TVHomeDebugTrace.log("home.restoreOverlayFocus waiting for details.disappear")
-        } else {
-            focusedCardID = target
-            // Visible menus do not have a Details transition to wait for, so
-            // retain their short retry window.
-            for delay in [0.04, 0.12, 0.25, 0.45] {
-                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                    if overlayRestoreGeneration == generation, overlayRestoreCardID == target {
-                        TVHomeDebugTrace.log("home.restoreOverlayFocus fire target=\(target) delay=\(delay)")
-                        focusedCardID = target
-                    }
-                }
-            }
-        }
-
-        // Safety fallback if the lifecycle callback is lost. Normally the
-        // target card's focus callback clears the lock much earlier.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            if overlayRestoreGeneration == generation, overlayRestoreCardID == target {
-                TVHomeDebugTrace.log("home.restoreOverlayFocus safety cleanup target=\(target)")
-                if waitForDetailsDisappearance {
-                    focusedCardID = target
-                }
-                overlayRestoreCardID = nil
-                if focusWork.restoringOverlayCardID == target {
-                    focusWork.restoringOverlayCardID = nil
-                }
-            }
-        }
-    }
-
-    /// Release the one-card focus lock as soon as the intended card's real
-    /// focus callback confirms restoration. Defer the unlock by one run-loop
-    /// turn so the current focus transaction finishes with only that card
-    /// eligible; unlocking inside the callback let tvOS jump to the first row
-    /// in the six-row focus window (two rows above).
-    private func completeOverlayFocusRestore(for cardKey: String) {
-        guard focusWork.restoringOverlayCardID == cardKey else { return }
-        let generation = overlayRestoreGeneration
-        TVHomeDebugTrace.log("home.completeOverlayFocusRestore start cardKey=\(cardKey) gen=\(generation)")
-        DispatchQueue.main.async {
-            guard overlayRestoreGeneration == generation,
-                  focusWork.restoringOverlayCardID == cardKey,
-                  overlayRestoreCardID == cardKey else { return }
-
-            TVHomeDebugTrace.log("home.completeOverlayFocusRestore done cardKey=\(cardKey)")
-            focusWork.restoringOverlayCardID = nil
-            var transaction = Transaction()
-            transaction.animation = nil
-            withTransaction(transaction) {
-                overlayRestoreCardID = nil
-                focusedCardID = cardKey
-            }
-        }
     }
 
     /// The loading spinner should only replace the catalog on a genuine first
@@ -1228,16 +986,14 @@ resetGeneration: rowResetGeneration,
             : estimatedCollectionRowHeight(for: section)
     }
 
-    /// Captures return identity without publishing SwiftUI state. Publishing
-    /// `overlayRestoreCardID` here invalidates the entire Home tree on the same
-    /// frame that Details is trying to mount, which is why Search felt faster.
+    /// Opens Details from a Home card. Home stays mounted and focused beneath the
+    /// pushed screen, so nothing about the card needs capturing: tvOS restores
+    /// focus to it on pop.
     private func navigateToDetailsFromHome(
         id: String,
         type: String,
         restoreCardID: String? = nil
     ) {
-        // Home stays mounted and focused beneath the pushed Details, so there
-        // is nothing to capture: tvOS restores the card on pop.
         _ = restoreCardID
         onNavigateToDetails(id, type)
     }
@@ -1687,8 +1443,6 @@ resetGeneration: rowResetGeneration,
         didRequestInitialCardFocus = false
         didPrepareInitialFocusViewport = false
         pendingInitialFocusCardKey = nil
-        shouldRestoreHomeFocus = false
-        retainedFocusBindingCardID = nil
     }
 
     /// Skeleton rows for catalogs this load has not returned yet, taken from the
@@ -2131,7 +1885,7 @@ resetGeneration: rowResetGeneration,
             focusWork.landscapeFocusTask?.cancel()
         }
 
-        if !focusWork.defersOverlayPreparation, landscapeFocusedId == cardKey {
+        if landscapeFocusedId == cardKey {
             landscapeFocusedId = nil
         }
     }
@@ -2194,9 +1948,6 @@ resetGeneration: rowResetGeneration,
                 setContinueWatching([])
                 displayedProgressSource = selectedProgressSource
             }
-            #if DEBUG
-            logRowWindow("remote progress source (\(selectedProgressSource.rawValue))")
-            #endif
             return
         }
         // The store holds the persisted first page and is authoritative — a save
@@ -2219,19 +1970,7 @@ resetGeneration: rowResetGeneration,
             .filter(shouldDisplayContinueWatchingItem)
         setContinueWatching(visibleItems)
         displayedProgressSource = .nuvioSync
-        #if DEBUG
-        logRowWindow("after CW refresh (\(continueWatching.count) item(s), \(upcomingItems.count) upcoming)")
-        #endif
     }
-
-    #if DEBUG
-    /// Reports which rows are focusable versus placeholders, and what the row
-    /// window is centred on. Vertical navigation dying on Home means the centre
-    /// disagrees with where focus actually is, and that is invisible otherwise.
-    private func logRowWindow(_ reason: String) {
-        let sections = visibleSections.filter(\.hasContent)
-    }
-    #endif
 
     /// Pages in more of the account's history as focus nears the end of the
     /// Continue Watching row, the same way a catalog row loads its next page.

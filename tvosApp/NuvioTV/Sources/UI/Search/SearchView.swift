@@ -26,11 +26,6 @@ struct SearchView: View {
     /// `focusedResultID` to nil while the next lazy cell materializes, and
     /// arming instantly on that blip bounces focus back to the previous card.
     @State private var restoreArmTask: Task<Void, Never>?
-    /// Card to actively re-focus once the Details overlay dismisses; captured
-    /// when the tab view gets disabled (overlay up), consumed on re-enable.
-    @State private var overlayRestoreResultID: String?
-    @State private var overlayRestoreGeneration = 0
-    @Environment(\.isEnabled) private var isEnabled
     @AppStorage(SettingsKey.amoled) private var amoled = false
     @AppStorage(SettingsKey.bodyColor) private var bodyColor = SettingsBackground.charcoal.rawValue
     @AppStorage(SettingsKey.hideUnreleased) private var hideUnreleased = false
@@ -86,22 +81,8 @@ struct SearchView: View {
                 restoreArmTask?.cancel()
                 lastFocusedResultID = newValue
                 shouldRestoreResultFocus = false
-                // Restoration complete -- lift the focus restriction.
-                if isEnabled, newValue == overlayRestoreResultID { overlayRestoreResultID = nil }
             } else if lastFocusedResultID != nil {
                 scheduleRestoreArm()
-            }
-        }
-        // Overlay dismissal re-places focus geometrically without consulting
-        // `defaultFocus`. While `overlayRestoreResultID` is set every other
-        // card is unfocusable, so the engine can only land back on the saved
-        // card -- no scroll-to-top flash. See TVHomeView for the full story.
-        .onChange(of: isEnabled) { _, enabled in
-            if !enabled {
-                overlayRestoreGeneration &+= 1
-                overlayRestoreResultID = focusedResultID ?? lastFocusedResultID
-            } else if let target = overlayRestoreResultID {
-                restoreOverlayFocus(to: target, generation: overlayRestoreGeneration)
             }
         }
     }
@@ -116,21 +97,6 @@ struct SearchView: View {
             try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled, focusedResultID == nil else { return }	
             shouldRestoreResultFocus = true
-        }
-    }
-
-	    private func restoreOverlayFocus(to target: String, generation: Int) {
-        for delay in [0.12, 0.45] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                if overlayRestoreGeneration == generation, overlayRestoreResultID == target {
-                    focusedResultID = target
-                }
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if overlayRestoreGeneration == generation, overlayRestoreResultID == target {
-                overlayRestoreResultID = nil
-            }
         }
     }
 
@@ -181,11 +147,9 @@ struct SearchView: View {
                         externalFocus: $focusedResultID,
                         forceShowLabels: true
                     ) {
-                        overlayRestoreResultID = item.id
                         lastFocusedResultID = item.id
                         onContentClick(item.id, item.type)
                     }
-                    .disabled(overlayRestoreResultID != nil && overlayRestoreResultID != item.id)
                 }
             }
             .padding(.top, 16)

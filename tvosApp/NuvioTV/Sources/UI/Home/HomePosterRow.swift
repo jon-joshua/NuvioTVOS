@@ -76,13 +76,6 @@ struct HomePosterRow: View {
     let initialFocusCardKey: String?
     let landscapeFocusedId: String?
     var externalFocus: FocusState<String?>.Binding? = nil
-    /// While non-nil, every card except this key is unfocusable — the Settings
-    /// sidebar trick. Used during overlay-dismiss focus restoration so the
-    /// engine can only land on the saved card, never flashing the first one.
-    var restrictFocusToCardKey: String? = nil
-    /// Separate from focus restriction so row-entry locks do not draw a focus
-    /// outline; only overlay restoration retains focused appearance.
-    var retainFocusAppearanceForCardKey: String? = nil
     /// Suppresses the one focus/layout animation caused by returning to Home
     /// from another tab. Normal left/right focus animation remains enabled.
     var suppressFocusAnimations: Bool = false
@@ -188,10 +181,8 @@ struct HomePosterRow: View {
         // A card that must take focus has to exist first (see `pinIfInRow`).
         .onAppear {
             pinIfInRow(initialFocusCardKey)
-            pinIfInRow(restrictFocusToCardKey)
         }
         .onChange(of: initialFocusCardKey) { _, key in pinIfInRow(key) }
-        .onChange(of: restrictFocusToCardKey) { _, key in pinIfInRow(key) }
     }
 
     private var cardStrip: some View {
@@ -253,7 +244,6 @@ struct HomePosterRow: View {
             showPosterLabels: posterLabels,
             smoothFocusAnimations: cardFocusAnimations,
             focusHighlighterEnabled: focusHighlighter,
-            retainFocusAppearance: retainFocusAppearanceForCardKey == cardKey,
             allowsFocus: true,
             isWatched: isWatched(item)
         ) {
@@ -262,10 +252,7 @@ struct HomePosterRow: View {
         // `PosterCard.==` ignores the closures built above, so an unchanged
         // card skips its body entirely when the row re-evaluates.
         .equatable()
-        .disabled(
-            (restrictFocusToCardKey != nil && restrictFocusToCardKey != cardKey)
-                || (!isRowFocused && index != pinned)
-        )
+        .disabled(!isRowFocused && index != pinned)
     }
 
     /// Pin the focused card, then let the host react (paging, backdrop, store).
@@ -302,17 +289,6 @@ struct HomePosterRow: View {
 // vertical window to swap lightweight shells for real poster cards.
 extension HomePosterRow: Equatable {
     static func == (lhs: HomePosterRow, rhs: HomePosterRow) -> Bool {
-        let lhsTargetInRow = lhs.restrictFocusToCardKey?.hasPrefix("\(lhs.id)\u{1}") == true
-        let rhsTargetInRow = rhs.restrictFocusToCardKey?.hasPrefix("\(rhs.id)\u{1}") == true
-        let restrictEqual = (lhs.restrictFocusToCardKey != nil) == (rhs.restrictFocusToCardKey != nil)
-            && (lhsTargetInRow == rhsTargetInRow)
-            && (!lhsTargetInRow || lhs.restrictFocusToCardKey == rhs.restrictFocusToCardKey)
-
-        let lhsRetainInRow = lhs.retainFocusAppearanceForCardKey?.hasPrefix("\(lhs.id)\u{1}") == true
-        let rhsRetainInRow = rhs.retainFocusAppearanceForCardKey?.hasPrefix("\(rhs.id)\u{1}") == true
-        let retainEqual = (lhsRetainInRow == rhsRetainInRow)
-            && (!lhsRetainInRow || lhs.retainFocusAppearanceForCardKey == rhs.retainFocusAppearanceForCardKey)
-
         return lhs.id == rhs.id
             && lhs.title == rhs.title
             && lhs.horizontalEdgeInset == rhs.horizontalEdgeInset
@@ -325,8 +301,6 @@ extension HomePosterRow: Equatable {
             && lhs.resetGeneration == rhs.resetGeneration
             && lhs.initialFocusCardKey == rhs.initialFocusCardKey
             && lhs.landscapeFocusedId == rhs.landscapeFocusedId
-            && restrictEqual
-            && retainEqual
             && lhs.suppressFocusAnimations == rhs.suppressFocusAnimations
             && lhs.isRowFocused == rhs.isRowFocused
     }

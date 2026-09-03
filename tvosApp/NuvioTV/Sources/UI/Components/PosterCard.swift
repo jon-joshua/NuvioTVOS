@@ -133,9 +133,6 @@ struct PosterCard: View {
     var showPosterLabels: Bool = false
     var smoothFocusAnimations: Bool = true
     var focusHighlighterEnabled: Bool = false
-    /// Keeps the last-selected card visually outlined while an overlay owns
-    /// tvOS focus. The parent supplies this for exactly one saved card.
-    var retainFocusAppearance: Bool = false
     /// Lets Home retain off-window artwork without leaving every card in the
     /// tvOS focus graph.
     var allowsFocus: Bool = true
@@ -635,7 +632,7 @@ struct PosterCard: View {
     }
 
     private var showsFocusedAppearance: Bool {
-        isFocused || retainFocusAppearance
+        isFocused
     }
 
     private var showsPosterTitle: Bool {
@@ -815,7 +812,6 @@ struct PosterCardStaticKey: Equatable {
     let showPosterLabels: Bool
     let smoothFocusAnimations: Bool
     let focusHighlighterEnabled: Bool
-    let retainFocusAppearance: Bool
     let allowsFocus: Bool
 }
 
@@ -852,7 +848,6 @@ extension PosterCard {
             showPosterLabels: showPosterLabels,
             smoothFocusAnimations: smoothFocusAnimations,
             focusHighlighterEnabled: focusHighlighterEnabled,
-            retainFocusAppearance: retainFocusAppearance,
             allowsFocus: allowsFocus
         )
     }
