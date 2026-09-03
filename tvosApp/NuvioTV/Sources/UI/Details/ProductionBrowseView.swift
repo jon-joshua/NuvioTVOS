@@ -345,7 +345,11 @@ private struct NetworkBrowseRail: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: TmdbBrowseGridMetrics.posterGap) {
                     ForEach(rail.items) { title in
-                        ProductionBrowseCard(title: title) {
+                        PosterTile(
+                            meta: title.asMeta,
+                            size: CGSize(width: TmdbBrowseGridMetrics.posterWidth, height: TmdbBrowseGridMetrics.posterHeight),
+                            caption: .standard(for: title.asMeta)
+                        ) {
                             onSelect(title)
                         }
                     }
@@ -433,10 +437,17 @@ struct PersonBrowseView: View {
                     ScrollView {
                         LazyVGrid(columns: columns, alignment: .leading, spacing: TmdbBrowseGridMetrics.posterGap) {
                             ForEach(titles) { title in
-                                ProductionBrowseCard(title: title) {
+                                PosterTile(
+                                    meta: title.asMeta,
+                                    size: CGSize(width: TmdbBrowseGridMetrics.posterWidth, height: TmdbBrowseGridMetrics.posterHeight),
+                                    caption: .standard(for: title.asMeta),
+
+                                    externalFocus: $focusedId,
+
+                                    focusValue: title.id
+                                ) {
                                     onSelect(title)
                                 }
-                                .focused($focusedId, equals: title.id)
                             }
                         }
                         .padding(.top, 16)
@@ -497,111 +508,3 @@ private enum TmdbBrowseGridMetrics {
     }
 }
 
-private struct ProductionBrowseCard: View {
-    let title: RelatedTitle
-    let alwaysShowLabels: Bool
-    let onSelect: () -> Void
-
-    @FocusState private var isFocused: Bool
-    @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    private let smoothFocus = true
-    @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
-    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    private let liquidGlassCards = true
-
-    private var cardCornerRadius: CGFloat {
-        AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16)
-    }
-
-    private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-    }
-
-    init(
-        title: RelatedTitle,
-        alwaysShowLabels: Bool = false,
-        onSelect: @escaping () -> Void
-    ) {
-        self.title = title
-        self.alwaysShowLabels = alwaysShowLabels
-        self.onSelect = onSelect
-    }
-
-    var body: some View {
-        Button(action: onSelect) {
-            VStack(alignment: .leading, spacing: 12) {
-                ZStack {
-                    shape
-                        .fill(Color.white.opacity(0.08))
-                    if let poster = title.posterURL, let url = URL(string: poster) {
-                        AsyncImage(url: url) { phase in
-                            if case .success(let image) = phase {
-                                image
-                                    .resizable()
-                                    .scaledToFill()
-                            }
-                        }
-                        .frame(width: TmdbBrowseGridMetrics.posterWidth, height: TmdbBrowseGridMetrics.posterHeight)
-                        .clipped()
-                    } else {
-                        Image(systemName: "film")
-                            .font(.system(size: 40, weight: .medium))
-                            .foregroundColor(.white.opacity(0.4))
-                    }
-                }
-                .frame(width: TmdbBrowseGridMetrics.posterWidth, height: TmdbBrowseGridMetrics.posterHeight)
-                .clipShape(shape)
-                .modifier(
-                    LiquidGlassCardModifier(
-                        cornerRadius: cardCornerRadius,
-                        isFocused: isFocused,
-                        isEnabled: liquidGlassCards
-                    )
-                )
-                .overlay(
-                    shape.stroke(
-                        isFocused ? AppFocusOutline.color : .clear,
-                        lineWidth: focusHighlighter ? AppFocusOutline.emphasizedWidth : AppFocusOutline.width
-                    )
-                )
-                .shadow(
-                    color: .black.opacity(isFocused ? 0.5 : 0.2),
-                    radius: isFocused ? 16 : 6
-                )
-
-                if posterLabels || alwaysShowLabels {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(title.name)
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundColor(isFocused ? .white : .white.opacity(0.78))
-                            .lineLimit(1)
-                        Text(subtitle)
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.white.opacity(0.45))
-                            .lineLimit(1)
-                    }
-                    .frame(width: TmdbBrowseGridMetrics.posterWidth, alignment: .leading)
-                }
-            }
-        }
-        .buttonStyle(PosterCardButtonStyle())
-        .focused($isFocused)
-        .focusEffectDisabledIfAvailable()
-        .titleActionsContextMenu(
-            meta: title.asMeta,
-            onOpenDetails: onSelect
-        )
-        .scaleEffect(isFocused ? 1.06 : 1)
-        .animation(smoothFocus ? .spring(response: 0.28, dampingFraction: 0.75) : nil, value: isFocused)
-        .zIndex(isFocused ? 1 : 0)
-    }
-
-    private var subtitle: String {
-        var parts = [title.type == "series" ? "Series" : "Movie"]
-        if let year = title.year { parts.append(year) }
-        if let rating = title.rating, rating > 0 {
-            parts.append(String(format: "★ %.1f", rating))
-        }
-        return parts.joined(separator: "  ·  ")
-    }
-}

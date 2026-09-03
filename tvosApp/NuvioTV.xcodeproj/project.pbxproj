@@ -131,6 +131,8 @@
 		C0D310B5000000000000B5B5 /* NuvioTV/Sources/UI/Home/HomePosterRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300B5000000000000B5B5 /* NuvioTV/Sources/UI/Home/HomePosterRow.swift */; };
 		C0D310B6000000000000B6B6 /* NuvioTV/Sources/UI/Components/PinnedHorizontalRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300B6000000000000B6B6 /* NuvioTV/Sources/UI/Components/PinnedHorizontalRow.swift */; };
 		C0D310C0000000000000C0C0 /* NuvioTV/Sources/UI/Components/PosterTiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300C0000000000000C0C0 /* NuvioTV/Sources/UI/Components/PosterTiles.swift */; };
+		C0D310C2000000000000C2C2 /* NuvioTV/Sources/UI/Components/PosterTileModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300C2000000000000C2C2 /* NuvioTV/Sources/UI/Components/PosterTileModel.swift */; };
+		C0D310C3000000000000C3C3 /* NuvioTV/Sources/UI/Components/PosterTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300C3000000000000C3C3 /* NuvioTV/Sources/UI/Components/PosterTile.swift */; };
 		C0D310BF000000000000BFBF /* NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300BF000000000000BFBF /* NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift */; };
 		C0D310BE000000000000BEBE /* NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300BE000000000000BEBE /* NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift */; };
 		C0D310BC000000000000BCBC /* NuvioTV/Sources/UI/Home/TVHomeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300BC000000000000BCBC /* NuvioTV/Sources/UI/Home/TVHomeModels.swift */; };
@@ -153,6 +155,7 @@
 		PP0110050000000000000005 /* NuvioTV/Sources/UI/Player/PlayerLoadingOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP0100050000000000000005 /* NuvioTV/Sources/UI/Player/PlayerLoadingOverlay.swift */; };
 		T0D310E200000000000000E2 /* StreamsDiscoveryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T0D300E200000000000000E2 /* StreamsDiscoveryTests.swift */; };
 		T0D310E3 /* StreamQualityTagsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T0D300E3 /* StreamQualityTagsTests.swift */; };
+		T0D310E5 /* PosterTileModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T0D300E5 /* PosterTileModelTests.swift */; };
 		T0D310E4 /* CatalogDecodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T0D300E4 /* CatalogDecodingTests.swift */; };
 /* End PBXBuildFile section */
 
@@ -323,6 +326,8 @@
 		C0D300B5000000000000B5B5 /* NuvioTV/Sources/UI/Home/HomePosterRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/HomePosterRow.swift; sourceTree = "<group>"; };
 		C0D300B6000000000000B6B6 /* NuvioTV/Sources/UI/Components/PinnedHorizontalRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Components/PinnedHorizontalRow.swift; sourceTree = "<group>"; };
 		C0D300C0000000000000C0C0 /* NuvioTV/Sources/UI/Components/PosterTiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Components/PosterTiles.swift; sourceTree = "<group>"; };
+		C0D300C2000000000000C2C2 /* NuvioTV/Sources/UI/Components/PosterTileModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Components/PosterTileModel.swift; sourceTree = "<group>"; };
+		C0D300C3000000000000C3C3 /* NuvioTV/Sources/UI/Components/PosterTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Components/PosterTile.swift; sourceTree = "<group>"; };
 		C0D300BF000000000000BFBF /* NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift; sourceTree = "<group>"; };
 		C0D300BE000000000000BEBE /* NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift; sourceTree = "<group>"; };
 		C0D300BC000000000000BCBC /* NuvioTV/Sources/UI/Home/TVHomeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/TVHomeModels.swift; sourceTree = "<group>"; };
@@ -348,6 +353,7 @@
 		PP0100050000000000000005 /* NuvioTV/Sources/UI/Player/PlayerLoadingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Player/PlayerLoadingOverlay.swift; sourceTree = "<group>"; };
 		T0D300E200000000000000E2 /* StreamsDiscoveryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamsDiscoveryTests.swift; sourceTree = "<group>"; };
 		T0D300E3 /* StreamQualityTagsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamQualityTagsTests.swift; sourceTree = "<group>"; };
+		T0D300E5 /* PosterTileModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PosterTileModelTests.swift; sourceTree = "<group>"; };
 		T0D300E4 /* CatalogDecodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogDecodingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -570,6 +576,8 @@
 				C0D300B7000000000000B7B7 /* NuvioTV/Sources/UI/Theme/NuvioMotion.swift */,
 				C0D300B6000000000000B6B6 /* NuvioTV/Sources/UI/Components/PinnedHorizontalRow.swift */,
 				C0D300C0000000000000C0C0 /* NuvioTV/Sources/UI/Components/PosterTiles.swift */,
+				C0D300C2000000000000C2C2 /* NuvioTV/Sources/UI/Components/PosterTileModel.swift */,
+				C0D300C3000000000000C3C3 /* NuvioTV/Sources/UI/Components/PosterTile.swift */,
 				C0D300BF000000000000BFBF /* NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift */,
 				C0D300BE000000000000BEBE /* NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift */,
 				C0D300BC000000000000BCBC /* NuvioTV/Sources/UI/Home/TVHomeModels.swift */,
@@ -644,6 +652,7 @@
 				AE10F01E /* AuthReauthFlowTests.swift */,
 				T0D300E200000000000000E2 /* StreamsDiscoveryTests.swift */,
 				T0D300E3 /* StreamQualityTagsTests.swift */,
+				T0D300E5 /* PosterTileModelTests.swift */,
 				T0D300E4 /* CatalogDecodingTests.swift */,
 				51A100050000000000000005 /* SimklAuthServiceTests.swift */,
 				PP0100040000000000000004 /* PostPlayRecommendationTests.swift */,
@@ -824,6 +833,7 @@
 				AE10B01E /* AuthReauthFlowTests.swift in Sources */,
 				T0D310E200000000000000E2 /* StreamsDiscoveryTests.swift in Sources */,
 				T0D310E3 /* StreamQualityTagsTests.swift in Sources */,
+				T0D310E5 /* PosterTileModelTests.swift in Sources */,
 				T0D310E4 /* CatalogDecodingTests.swift in Sources */,
 				51A100060000000000000006 /* SimklAuthServiceTests.swift in Sources */,
 				PP0110040000000000000004 /* PostPlayRecommendationTests.swift in Sources */,
@@ -881,6 +891,8 @@
 				C0D310B7000000000000B7B7 /* NuvioTV/Sources/UI/Theme/NuvioMotion.swift in Sources */,
 				C0D310B6000000000000B6B6 /* NuvioTV/Sources/UI/Components/PinnedHorizontalRow.swift in Sources */,
 				C0D310C0000000000000C0C0 /* NuvioTV/Sources/UI/Components/PosterTiles.swift in Sources */,
+				C0D310C2000000000000C2C2 /* NuvioTV/Sources/UI/Components/PosterTileModel.swift in Sources */,
+				C0D310C3000000000000C3C3 /* NuvioTV/Sources/UI/Components/PosterTile.swift in Sources */,
 				C0D310BF000000000000BFBF /* NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift in Sources */,
 				C0D310BE000000000000BEBE /* NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift in Sources */,
 				C0D310BC000000000000BCBC /* NuvioTV/Sources/UI/Home/TVHomeModels.swift in Sources */,

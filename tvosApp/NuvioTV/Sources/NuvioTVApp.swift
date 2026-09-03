@@ -995,7 +995,7 @@ struct ContentView: View {
     /// *outside* the stack so they cover pushed screens as well.
     @ViewBuilder
     private var mainContainer: some View {
-        PosterChromeStyleProvider {
+        PosterLabelsProvider {
         ZStack {
             NavigationStack(path: $navigation.path) {
                 mainTabView

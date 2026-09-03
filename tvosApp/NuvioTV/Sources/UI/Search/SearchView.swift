@@ -140,12 +140,12 @@ struct SearchView: View {
         ScrollView {
             LazyVGrid(columns: gridColumns, alignment: .center, spacing: SearchGridMetrics.posterGap) {
                 ForEach(visibleResults) { item in
-                    PosterGridCard(
+                    PosterTile(
                         meta: item,
-                        width: SearchGridMetrics.posterWidth,
-                        height: SearchGridMetrics.posterHeight,
-                        externalFocus: $focusedResultID,
-                        forceShowLabels: true
+                        size: CGSize(width: SearchGridMetrics.posterWidth, height: SearchGridMetrics.posterHeight),
+                        caption: .standard(for: item),
+                        alwaysShowCaption: true,
+                        externalFocus: $focusedResultID
                     ) {
                         lastFocusedResultID = item.id
                         onContentClick(item.id, item.type)

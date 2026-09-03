@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Discover for the Classic search screen: the grid shown while the query is
 /// empty. Popular titles, nothing to configure -- a placeholder with pictures,
-/// not a browse tool. Uses the same `PosterGridCard` as the results grid so
+/// not a browse tool. Uses the same `PosterTile` as the results grid so
 /// both halves of the screen read as one. Data comes from the shared
 /// `DiscoverViewModel`; the Netflix-style screen keeps its own `DiscoverSection`.
 struct SearchDiscoverGrid: View {
@@ -20,11 +20,11 @@ struct SearchDiscoverGrid: View {
         ScrollView {
             LazyVGrid(columns: columns, alignment: .center, spacing: posterGap) {
                 ForEach(visibleItems) { item in
-                    PosterGridCard(
+                    PosterTile(
                         meta: item,
-                        width: posterWidth,
-                        height: posterHeight,
-                        forceShowLabels: true
+                        size: CGSize(width: posterWidth, height: posterHeight),
+                        caption: .standard(for: item),
+                        alwaysShowCaption: true
                     ) {
                         onContentClick(item.id, item.type)
                     }

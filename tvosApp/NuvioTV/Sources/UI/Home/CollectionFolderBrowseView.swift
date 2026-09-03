@@ -445,10 +445,12 @@ struct CollectionFolderBrowseView: View {
         ScrollView {
             LazyVGrid(columns: columns, alignment: .leading, spacing: CollectionFolderGridMetrics.posterGap) {
                 ForEach(displayedGridItems) { item in
-                    CollectionFolderResultCard(
+                    PosterTile(
                         meta: item,
-                        externalFocus: $focusedItemID,
-                        isWatched: isTitleWatched(item)
+                        size: CGSize(width: CollectionFolderGridMetrics.posterWidth, height: CollectionFolderGridMetrics.posterHeight),
+                        watched: isTitleWatched(item).map { .resolved($0) } ?? .lookup,
+                        caption: .standard(for: item),
+                        externalFocus: $focusedItemID
                     ) {
                         onSelect(item)
                     }
