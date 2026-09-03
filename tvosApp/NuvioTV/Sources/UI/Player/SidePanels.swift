@@ -65,7 +65,7 @@ struct PlayerPanelRow: View {
     var selected: Bool = false
     var isFocused: Bool = false
 
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
+    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
 
     private var rowCornerRadius: CGFloat {
         AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16)
@@ -124,7 +124,7 @@ struct PlayerEpisodesPanel: View {
     @ObservedObject var viewModel: PlayerViewModel
     @FocusState private var focusedID: String?
 
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
+    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
 
     private var rowCornerRadius: CGFloat {
         AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 18)

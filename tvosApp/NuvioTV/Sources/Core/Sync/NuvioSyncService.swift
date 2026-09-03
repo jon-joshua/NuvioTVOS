@@ -1613,123 +1613,6 @@ private enum SyncClientIdentity {
     }
 }
 
-/// Translates between tvOS card styling presets (points & labels) and Android TV's
-/// `PosterCardStyleRepository` preferences (dp values & landscape/label toggles).
-enum PosterCardStyleSyncMapper {
-    static let featureKey = "poster_card_style_settings_payload"
-
-    static func cornerRadiusDp(for rawValue: String?) -> Int {
-        let option = CardCornerRadiusOption.from(rawValue: rawValue)
-        switch option {
-        case .sharp: return 0
-        case .subtle: return 4
-        case .classic: return 8
-        case .rounded: return 12
-        case .pill: return 16
-        }
-    }
-
-    static func cornerRadiusOption(for dp: Int) -> CardCornerRadiusOption {
-        if dp <= 0 {
-            return .sharp
-        } else if dp <= 6 {
-            return .subtle
-        } else if dp <= 10 {
-            return .classic
-        } else if dp <= 14 {
-            return .rounded
-        } else {
-            return .pill
-        }
-    }
-
-    static func widthDp(for rawValue: String?) -> Int {
-        let option = CardSizeOption.from(rawValue: rawValue)
-        switch option {
-        case .compact: return 104
-        case .dense: return 112
-        case .standard: return 120
-        case .balanced: return 126
-        case .comfort: return 134
-        case .large: return 140
-        }
-    }
-
-    static func cardSizeOption(for widthDp: Int) -> CardSizeOption {
-        if widthDp < 108 {
-            return .compact
-        } else if widthDp <= 116 {
-            return .dense
-        } else if widthDp <= 123 {
-            return .standard
-        } else if widthDp <= 130 {
-            return .balanced
-        } else if widthDp <= 137 {
-            return .comfort
-        } else {
-            return .large
-        }
-    }
-
-    static func exportPayload(
-        cardCornerRadius: String?,
-        cardSize: String?,
-        existingPayload: String?
-    ) -> String {
-        var existingDict: [String: Any] = [:]
-        if let payload = existingPayload?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !payload.isEmpty,
-           let data = payload.data(using: .utf8),
-           let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
-            existingDict = parsed
-        }
-
-        let cornerRadius = cornerRadiusDp(for: cardCornerRadius)
-        let width = widthDp(for: cardSize)
-        let height = (width * 3) / 2
-        let catalogLandscapeModeEnabled = existingDict["catalogLandscapeModeEnabled"] as? Bool ?? false
-        let hideLabelsEnabled = existingDict["hideLabelsEnabled"] as? Bool ?? false
-
-        let payloadDict: [String: Any] = [
-            "widthDp": width,
-            "heightDp": height,
-            "cornerRadiusDp": cornerRadius,
-            "catalogLandscapeModeEnabled": catalogLandscapeModeEnabled,
-            "hideLabelsEnabled": hideLabelsEnabled
-        ]
-
-        if let data = try? JSONSerialization.data(withJSONObject: payloadDict, options: [.sortedKeys]),
-           let jsonString = String(data: data, encoding: .utf8) {
-            return jsonString
-        }
-        return ""
-    }
-
-    static func importPayload(_ remote: Any?) -> (cornerRadiusOption: CardCornerRadiusOption?, cardSizeOption: CardSizeOption?) {
-        guard let remote else { return (nil, nil) }
-        var dict: [String: Any]?
-        if let jsonString = remote as? String,
-           let data = jsonString.data(using: .utf8),
-           let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
-            dict = parsed
-        } else if let parsed = remote as? [String: Any] {
-            dict = parsed
-        }
-        guard let dict else { return (nil, nil) }
-
-        var radiusResult: CardCornerRadiusOption?
-        if let cornerRadiusDp = (dict["cornerRadiusDp"] as? NSNumber)?.intValue {
-            radiusResult = cornerRadiusOption(for: cornerRadiusDp)
-        }
-
-        var sizeResult: CardSizeOption?
-        if let widthDp = (dict["widthDp"] as? NSNumber)?.intValue {
-            sizeResult = cardSizeOption(for: widthDp)
-        }
-
-        return (radiusResult, sizeResult)
-    }
-}
 
 /// Translates Continue Watching and Up Next preferences between tvOS settings and Android TV's
 /// `ContinueWatchingPreferencesRepository` payload.
@@ -1967,12 +1850,6 @@ enum ThemeSettingsSyncMapper {
             ]
         }
 
-        if let liquidGlass = defaults.object(forKey: SettingsKey.liquidGlassCards) as? Bool {
-            result["liquidGlassNativeTabBarEnabled"] = [
-                "type": "boolean",
-                "value": liquidGlass
-            ]
-        }
 
         return result
     }
@@ -1990,9 +1867,6 @@ enum ThemeSettingsSyncMapper {
             defaults.set(rawAmoled, forKey: SettingsKey.amoled)
         }
 
-        if let rawLiquidGlass = (remote["liquidGlassNativeTabBarEnabled"] as? [String: Any])?["value"] as? Bool ?? remote["liquidGlassNativeTabBarEnabled"] as? Bool {
-            defaults.set(rawLiquidGlass, forKey: SettingsKey.liquidGlassCards)
-        }
     }
 }
 
@@ -2007,7 +1881,6 @@ fileprivate final class NuvioAPIClient {
     /// Shared with Android TV's TMDB settings repository.
     private static let tmdbSettingsFeature = "tmdb_settings"
     /// Shared with Android TV's PosterCardStyleRepository.
-    private static let posterCardStyleSettingsFeature = "poster_card_style_settings_payload"
     /// Shared with Android TV's PlayerSettingsStorage.
     private static let playerSettingsFeature = "player_settings"
     /// Shared with Android TV's ContinueWatchingPreferencesRepository.
@@ -2443,8 +2316,6 @@ fileprivate final class NuvioAPIClient {
         // feature into the tv blob for clients that only read that platform.
         let streamBadgeFeature = (mobileFeatures[Self.streamBadgeSettingsFeature] as? [String: Any])
             ?? (features[Self.streamBadgeSettingsFeature] as? [String: Any])
-        let posterCardStyleFeature = mobileFeatures[Self.posterCardStyleSettingsFeature]
-            ?? features[Self.posterCardStyleSettingsFeature]
         let playerFeature = (mobileFeatures[Self.playerSettingsFeature] as? [String: Any])
             ?? (features[Self.playerSettingsFeature] as? [String: Any])
         let continueWatchingFeature = mobileFeatures[Self.continueWatchingSettingsFeature]
@@ -2454,7 +2325,7 @@ fileprivate final class NuvioAPIClient {
         let themeFeature = (mobileFeatures[Self.themeSettingsFeature] as? [String: Any])
             ?? (features[Self.themeSettingsFeature] as? [String: Any])
 
-        guard tvosFeature != nil || debridFeature != nil || tmdbFeature != nil || streamBadgeFeature != nil || posterCardStyleFeature != nil || playerFeature != nil || continueWatchingFeature != nil || mdbListFeature != nil || themeFeature != nil else {
+        guard tvosFeature != nil || debridFeature != nil || tmdbFeature != nil || streamBadgeFeature != nil || playerFeature != nil || continueWatchingFeature != nil || mdbListFeature != nil || themeFeature != nil else {
             return false
         }
 
@@ -2465,7 +2336,6 @@ fileprivate final class NuvioAPIClient {
         importDebridSettings(debridFeature, localProfileId: localProfileId)
         importTmdbSettings(tmdbFeature, localProfileId: localProfileId)
         importStreamBadgeSettings(streamBadgeFeature, localProfileId: localProfileId)
-        importPosterCardStyleSettings(posterCardStyleFeature, localProfileId: localProfileId)
         importPlayerSettings(playerFeature, localProfileId: localProfileId)
         importContinueWatchingSettings(continueWatchingFeature, localProfileId: localProfileId)
         importMdbListSettings(mdbListFeature, localProfileId: localProfileId)
@@ -2523,13 +2393,6 @@ fileprivate final class NuvioAPIClient {
             localProfileId: localProfileId,
             existing: existingTmdb
         )
-        let existingPosterStyle = (features[Self.posterCardStyleSettingsFeature] as? String)
-            ?? (lastPulledMobileProfileSettingsJSON?["features"] as? [String: Any])?[Self.posterCardStyleSettingsFeature] as? String
-        let posterStylePayload = exportPosterCardStyleSettings(
-            localProfileId: localProfileId,
-            existingPayload: existingPosterStyle
-        )
-        features[Self.posterCardStyleSettingsFeature] = posterStylePayload
 
         let tvPlayer = features[Self.playerSettingsFeature] as? [String: Any]
         let mobilePlayer = (latestMobileSettingsJSON["features"] as? [String: Any])?[Self.playerSettingsFeature] as? [String: Any]
@@ -2584,7 +2447,6 @@ fileprivate final class NuvioAPIClient {
             var mobileSettingsJSON = latestMobileSettingsJSON
             var mobileFeatures = mobileSettingsJSON["features"] as? [String: Any] ?? [:]
             mobileFeatures[Self.streamBadgeSettingsFeature] = exportStreamBadgeSettings(localProfileId: localProfileId)
-            mobileFeatures[Self.posterCardStyleSettingsFeature] = posterStylePayload
             mobileFeatures[Self.playerSettingsFeature] = playerPayload
             mobileFeatures[Self.continueWatchingSettingsFeature] = cwPayload
             mobileFeatures[Self.mdbListSettingsFeature] = mdbListPayload
@@ -3240,47 +3102,7 @@ fileprivate final class NuvioAPIClient {
         }
     }
 
-    private func exportPosterCardStyleSettings(
-        localProfileId: String,
-        existingPayload: String?
-    ) -> String {
-        let defaults = ProfileSettings.store(for: localProfileId)
-        let radiusRaw = defaults.string(forKey: SettingsKey.cardCornerRadius)
-        let sizeRaw = defaults.string(forKey: SettingsKey.cardSize)
-        return PosterCardStyleSyncMapper.exportPayload(
-            cardCornerRadius: radiusRaw,
-            cardSize: sizeRaw,
-            existingPayload: existingPayload
-        )
-    }
 
-    private func importPosterCardStyleSettings(_ remote: Any?, localProfileId: String) {
-        guard let remote else { return }
-        let defaults = ProfileSettings.store(for: localProfileId)
-        let (radiusOpt, sizeOpt) = PosterCardStyleSyncMapper.importPayload(remote)
-        var changed = false
-        if let radiusOpt {
-            if defaults.string(forKey: SettingsKey.cardCornerRadius) != radiusOpt.rawValue {
-                defaults.set(radiusOpt.rawValue, forKey: SettingsKey.cardCornerRadius)
-                if localProfileId == ProfileSettings.activeProfileID {
-                    UserDefaults.standard.set(radiusOpt.rawValue, forKey: SettingsKey.cardCornerRadius)
-                }
-                changed = true
-            }
-        }
-        if let sizeOpt {
-            if defaults.string(forKey: SettingsKey.cardSize) != sizeOpt.rawValue {
-                defaults.set(sizeOpt.rawValue, forKey: SettingsKey.cardSize)
-                if localProfileId == ProfileSettings.activeProfileID {
-                    UserDefaults.standard.set(sizeOpt.rawValue, forKey: SettingsKey.cardSize)
-                }
-                changed = true
-            }
-        }
-        if changed {
-            ProfileSettings.notifySettingsChanged()
-        }
-    }
 
     private func exportPlayerSettings(
         localProfileId: String,

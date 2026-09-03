@@ -555,7 +555,7 @@ struct NextEpisodeOverlay: View {
     var isFocused: Bool
     let isAutoPlayCancelled: Bool
 
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
+    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
 
     private var overlayCornerRadius: CGFloat {
         max(14, AppCardStyle.episodeCornerRadius(for: cardCornerRadiusSetting))

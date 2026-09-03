@@ -98,12 +98,10 @@ struct TVHomeView: View {
     @AppStorage(SettingsKey.heroEnabled) private var heroEnabled = true
     @AppStorage(SettingsKey.focusedPosterBackdropEnabled) private var focusedPosterBackdropEnabled = true
     @AppStorage(SettingsKey.focusedPosterBackdropDelay) private var focusedPosterBackdropDelay = 3
-    @AppStorage(SettingsKey.fastNavigation) private var fastNavigation = false
     @AppStorage(SettingsKey.hideUnreleased) private var hideUnreleased = false
     @AppStorage(SettingsKey.continueWatchingSort) private var continueWatchingSort = "Default"
     @AppStorage(SettingsKey.upNextFromFurthestEpisode) private var upNextFromFurthestEpisode = true
     @AppStorage(SettingsKey.showUnairedNextUp) private var showUnairedNextUp = true
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
     @AppStorage(SettingsKey.tmdbEnabled) private var tmdbEnabled = false
     @AppStorage(SettingsKey.tmdbLanguage) private var tmdbLanguage = "en"
@@ -1809,7 +1807,7 @@ resetGeneration: rowResetGeneration,
     /// feel responsive when parked, long enough that continuous left/right/up/down
     /// focus does not kick off decode/crossfade every step.
     private var heroSettleNanoseconds: UInt64 {
-        fastNavigation ? 120_000_000 : 300_000_000
+        300_000_000
     }
 
     /// Catalog title focus: card strip + row offset are immediate; hero/backdrop

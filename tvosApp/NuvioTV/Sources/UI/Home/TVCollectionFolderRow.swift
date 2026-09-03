@@ -75,7 +75,7 @@ struct TVCollectionFolderRow: View {
 
     @State private var scrollIndex: Int?
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     private var effectiveScrollIndex: Int {
@@ -287,7 +287,7 @@ private struct TVCollectionFolderCard: View {
 
     @FocusState private var isFocused: Bool
     @State private var didRequestInitialFocus = false
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
+    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
 
     private var showFocus: Bool { isFocused || retainFocusAppearance }
 

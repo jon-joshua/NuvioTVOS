@@ -3088,7 +3088,7 @@ private struct TvDetailsRelatedRow: View {
 
     @State private var scrollIndex = 0
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     private var cardWidth: CGFloat { 210 }
@@ -3187,8 +3187,8 @@ private struct TvDetailsCompanyCard: View {
     let onFocus: () -> Void
 
     @FocusState private var isFocused: Bool
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
+    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
+    private let liquidGlassCards = true
 
     private var cardCornerRadius: CGFloat {
         AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 14)
@@ -3273,7 +3273,7 @@ private struct TvDetailsCommentsRow: View {
     let onFocus: () -> Void
 
     @State private var scrollIndex = 0
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
 
     private let cardWidth: CGFloat = 420
     private let cardHeight: CGFloat = 240
@@ -3575,7 +3575,7 @@ private struct TvDetailsEpisodes: View {
     @State private var episodeScrollIndex: Int
     @State private var watchedEpisodeKeys: Set<String>
     @State private var userDidSelectSeason = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
     @AppStorage(SettingsKey.smartStreamSelection) private var smartStreamSelection = false
 
     init(
@@ -3912,8 +3912,8 @@ private struct TvEpisodeCard: View {
     let onMoveDown: () -> Void
     var onMoveUp: (() -> Void)? = nil
 
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
+    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
+    private let liquidGlassCards = true
 
     private var cardKey: String { TvEpisodeFocus.card(video.id) }
     private var isFocused: Bool { focus.wrappedValue == cardKey }

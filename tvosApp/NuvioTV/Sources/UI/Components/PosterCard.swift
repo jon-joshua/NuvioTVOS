@@ -56,49 +56,10 @@ enum CardCornerRadiusOption: String, CaseIterable, Identifiable {
     }
 }
 
-/// Card size options available in Settings (matching Android TV width & size presets)
-enum CardSizeOption: String, CaseIterable, Identifiable {
-    case compact = "Compact"
-    case dense = "Dense"
-    case standard = "Standard"
-    case balanced = "Balanced"
-    case comfort = "Comfort"
-    case large = "Large"
-
-    var id: String { rawValue }
-
-    /// Width scaling multiplier (1.0 = standard 210pt on tvOS modern layout)
-    var scale: CGFloat {
-        switch self {
-        case .compact: return 0.85
-        case .dense: return 0.92
-        case .standard: return 1.00
-        case .balanced: return 1.06
-        case .comfort: return 1.12
-        case .large: return 1.18
-        }
-    }
-
-    static func from(rawValue: String?) -> CardSizeOption {
-        guard let rawValue, !rawValue.isEmpty else { return .standard }
-        if let match = CardSizeOption(rawValue: rawValue) {
-            return match
-        }
-        let lower = rawValue.lowercased()
-        if lower.contains("compact") { return .compact }
-        if lower.contains("dense") { return .dense }
-        if lower.contains("standard") { return .standard }
-        if lower.contains("balanced") { return .balanced }
-        if lower.contains("comfort") { return .comfort }
-        if lower.contains("large") { return .large }
-        return .standard
-    }
-}
 
 /// Global card styling resolver
 enum AppCardStyle {
     static let defaultCornerRadiusRaw = CardCornerRadiusOption.classic.rawValue
-    static let defaultCardSizeRaw = CardSizeOption.standard.rawValue
 
     static func cornerRadius(for rawValue: String?, fallback: CGFloat = 16) -> CGFloat {
         guard let rawValue, !rawValue.isEmpty else { return fallback }
@@ -109,17 +70,8 @@ enum AppCardStyle {
         CardCornerRadiusOption.from(rawValue: rawValue).scale
     }
 
-    static func cardSizeScale(for rawValue: String?) -> CGFloat {
-        CardSizeOption.from(rawValue: rawValue).scale
-    }
 
-    static func posterWidth(base: CGFloat = 210, for sizeRawValue: String?) -> CGFloat {
-        round(base * cardSizeScale(for: sizeRawValue))
-    }
 
-    static func posterHeight(base: CGFloat = 315, for sizeRawValue: String?) -> CGFloat {
-        round(base * cardSizeScale(for: sizeRawValue))
-    }
 
     static func episodeCornerRadius(for rawValue: String?) -> CGFloat {
         let opt = CardCornerRadiusOption.from(rawValue: rawValue)
@@ -198,8 +150,8 @@ struct PosterCard: View {
     @State private var landscapeArtworkPrepared = false
     @AppStorage(SettingsKey.trailersEnabled) private var trailersEnabled = true
     @AppStorage(SettingsKey.trailerDelay) private var trailerDelay = 7
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
+    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
+    private let liquidGlassCards = true
     @State private var isTrailerPreviewActive = false
     @State private var isTrailerPreviewReady = false
     @State private var didFinishTrailerPreview = false
@@ -208,8 +160,8 @@ struct PosterCard: View {
     /// matching Home's hero debounce.
     @State private var landscapePreloadArmed = false
     #else
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
+    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
+    private let liquidGlassCards = true
     #endif
 
     var body: some View {

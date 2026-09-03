@@ -12,7 +12,7 @@ struct TVLoadingCatalogRow: View {
     let title: String
 
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
+    private let liquidGlassCards = true
 
     private let cardWidth: CGFloat = 210
     private let cardHeight: CGFloat = 315
@@ -102,7 +102,7 @@ struct HomePosterRow: View {
     /// scroll view positions on. Nil until the row has laid out once.
     @State private var leadingCardID: String?
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     private var compactPosterWidth: CGFloat {

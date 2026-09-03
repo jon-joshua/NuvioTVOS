@@ -6,33 +6,31 @@ import OSLog
 
 // MARK: - Poster tile chrome
 
-/// The five appearance settings every grid poster tile needs, resolved once per
+/// The two appearance settings every grid poster tile needs, resolved once per
 /// screen instead of once per card. Before this existed each tile carried five
 /// `@AppStorage` wrappers, so a grid of ~28 cards registered ~140 UserDefaults
 /// observers and tore them down again on every scroll recycle.
 struct PosterChromeStyle: Equatable {
     /// Whether the title/subtitle caption is drawn under the artwork.
     var posterLabels: Bool = false
-    /// Spring focus transitions; off means focus changes snap.
-    var smoothFocus: Bool = true
-    /// Accessibility setting: thicker focus outline.
+    /// Debug aid from Advanced settings: thicker focus outline.
     var focusHighlighter: Bool = false
-    /// Already resolved from the raw settings string to points.
-    var cornerRadius: CGFloat = 16
-    /// Liquid Glass fill + specular border on the artwork.
-    var liquidGlass: Bool = true
 
     /// Used by previews and any host that has not installed a provider.
-    /// Matches the `@AppStorage` defaults the cards used.
     static let `default` = PosterChromeStyle()
+
+    /// Fixed card geometry and material. The corner-radius, Liquid Glass and
+    /// smooth-focus options were removed from Settings; every card now shares
+    /// these defaults.
+    var cornerRadius: CGFloat { 16 }
+    var liquidGlass: Bool { true }
 
     var focusOutlineWidth: CGFloat {
         focusHighlighter ? AppFocusOutline.emphasizedWidth : AppFocusOutline.width
     }
 
-    /// The focus animation, or `nil` when the user turned smooth focus off.
     var focusAnimation: Animation? {
-        smoothFocus ? .spring(response: 0.28, dampingFraction: 0.75) : nil
+        .spring(response: 0.28, dampingFraction: 0.75)
     }
 
     var shape: RoundedRectangle {
@@ -62,19 +60,10 @@ struct PosterChromeStyleProvider<Content: View>: View {
     @ViewBuilder var content: Content
 
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
 
     private var style: PosterChromeStyle {
-        PosterChromeStyle(
-            posterLabels: posterLabels,
-            smoothFocus: smoothFocus,
-            focusHighlighter: focusHighlighter,
-            cornerRadius: AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16),
-            liquidGlass: liquidGlassCards
-        )
+        PosterChromeStyle(posterLabels: posterLabels, focusHighlighter: focusHighlighter)
     }
 
     var body: some View {

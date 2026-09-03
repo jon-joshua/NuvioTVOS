@@ -787,7 +787,7 @@ private struct CollectionFolderHomeStyleRow: View {
     @State private var landscapeFocusedId: String?
     @State private var pendingLandscapeFocusedId: String?
     @State private var landscapeFocusTask: Task<Void, Never>?
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
     @AppStorage(SettingsKey.focusedPosterBackdropEnabled) private var focusedPosterBackdropEnabled = true
     @AppStorage(SettingsKey.focusedPosterBackdropDelay) private var focusedPosterBackdropDelay = 3
@@ -957,7 +957,7 @@ private struct CollectionFolderTabButton: View {
     let action: () -> Void
 
     @FocusState private var isFocused: Bool
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     var body: some View {

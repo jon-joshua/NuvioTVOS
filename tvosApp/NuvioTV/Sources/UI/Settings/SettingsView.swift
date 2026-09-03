@@ -108,18 +108,14 @@ private enum SettingsCategory: String, CaseIterable, Identifiable {
 
 enum SettingsKey {
     static let profileName = "nuvio.tv.settings.profile.name"
-    static let profilePinEnabled = "nuvio.tv.settings.profile.pinEnabled"
     static let profileAutoSelectLast = "nuvio.tv.settings.profile.autoSelectLast"
     static let profileRequireSelectionAfterBackground = "nuvio.tv.settings.profile.requireSelectionAfterBackground"
     static let accountSyncWatchState = "nuvio.tv.settings.account.syncWatchState"
 
     static let theme = "nuvio.tv.settings.appearance.theme"
     static let bodyColor = "nuvio.tv.settings.appearance.bodyColor"
-    static let font = "nuvio.tv.settings.appearance.font"
     static let language = "nuvio.tv.settings.appearance.language"
     static let amoled = "nuvio.tv.settings.appearance.amoled"
-    static let amoledSurfaces = "nuvio.tv.settings.appearance.amoledSurfaces"
-    static let reduceMotion = "nuvio.tv.settings.appearance.reduceMotion"
 
     /// JSON `[String]` of home section ids in the user's preferred order.
     static let homeCatalogOrder = "nuvio.tv.settings.layout.homeCatalogOrder"
@@ -148,7 +144,6 @@ enum SettingsKey {
     /// JSON `[String]` of Home section ids selected as Grid View hero sources.
     /// Empty means all available catalog rows.
     static let posterLabels = "nuvio.tv.settings.layout.posterLabels"
-    static let catalogAddonNames = "nuvio.tv.settings.layout.catalogAddonNames"
     static let discoverLocation = "nuvio.tv.settings.layout.discoverLocation"
     /// Which Search screen the Search tab shows: `"Netflix"` (embedded
     /// key-by-key keyboard with a title list beside the poster grid) or
@@ -156,13 +151,9 @@ enum SettingsKey {
     static let continueWatchingSort = "nuvio.tv.settings.layout.continueWatchingSort"
     static let upNextFromFurthestEpisode = "nuvio.tv.settings.layout.upNextFromFurthestEpisode"
     static let showUnairedNextUp = "nuvio.tv.settings.layout.showUnairedNextUp"
-    static let cardCornerRadius = "nuvio.tv.settings.layout.cardCornerRadius"
-    static let cardSize = "nuvio.tv.settings.layout.cardSize"
-    static let liquidGlassCards = "nuvio.tv.settings.layout.liquidGlassCards"
     static let hideUnreleased = "nuvio.tv.settings.layout.hideUnreleased"
     static let showFullDates = "nuvio.tv.settings.layout.showFullDates"
 
-    static let traktConnected = "nuvio.tv.settings.integrations.traktConnected"
     static let traktClientID = "nuvio.tv.settings.integrations.traktClientID"
     static let traktClientSecret = "nuvio.tv.settings.integrations.traktClientSecret"
     static let traktContinueWatchingDaysCap = "nuvio.tv.settings.integrations.traktContinueWatchingDaysCap"
@@ -251,7 +242,6 @@ enum SettingsKey {
     static let subtitleLanguageSecondary = "nuvio.tv.settings.playback.subtitleLanguage.secondary"
     static let subtitleLanguageTertiary = "nuvio.tv.settings.playback.subtitleLanguage.tertiary"
     static let forcedSubtitles = "nuvio.tv.settings.playback.forcedSubtitles"
-    static let subtitleSize = "nuvio.tv.settings.playback.subtitleSize"
     static let frameRateMatching = "nuvio.tv.settings.playback.frameRateMatching"
     static let networkCache = "nuvio.tv.settings.playback.networkCache"
     static let playbackTrackSelections = "nuvio.tv.settings.playback.trackSelections"
@@ -261,8 +251,6 @@ enum SettingsKey {
     static let playerShowEpisodes = "nuvio.tv.settings.playback.showEpisodes"
     static let playerShowSources = "nuvio.tv.settings.playback.showSources"
 
-    static let fastNavigation = "nuvio.tv.settings.advanced.fastNavigation"
-    static let smoothFocus = "nuvio.tv.settings.advanced.smoothFocus"
     static let playbackDiagnostics = "nuvio.tv.settings.advanced.playbackDiagnostics"
     static let playbackDebug = "nuvio.tv.settings.advanced.playbackDebug"
     static let focusHighlighter = "nuvio.tv.settings.advanced.focusHighlighter"
@@ -277,14 +265,13 @@ enum SettingsKey {
     ])
 
     static let all = [
-        profileName, profilePinEnabled, profileAutoSelectLast, profileRequireSelectionAfterBackground,
+        profileName, profileAutoSelectLast, profileRequireSelectionAfterBackground,
         accountSyncWatchState,
-        theme, bodyColor, font, language, amoled, amoledSurfaces, reduceMotion,
-        heroEnabled, posterLabels, catalogAddonNames, discoverLocation,
+        theme, bodyColor, language, amoled,
+        heroEnabled, posterLabels, discoverLocation,
         continueWatchingSort, upNextFromFurthestEpisode, showUnairedNextUp,
-        cardCornerRadius, cardSize, liquidGlassCards,
         hideUnreleased, showFullDates,
-        traktConnected, traktClientID, traktClientSecret,
+        traktClientID, traktClientSecret,
         traktContinueWatchingDaysCap, traktShowMetaComments,
         traktWatchProgressSource, watchProgressSourceChosenByUser,
         traktLibrarySourceMode, traktMoreLikeThisSource,
@@ -307,10 +294,10 @@ enum SettingsKey {
         autoPlayNext, autoPlayNextCountdown, postPlayRecommendationsEnabled, trailersEnabled, trailerPreviewSound, trailerDelay,
         focusedPosterBackdropEnabled, focusedPosterBackdropDelay, audioLanguage,
         subtitleLanguages, subtitleLanguage, subtitleLanguageSecondary, subtitleLanguageTertiary,
-        forcedSubtitles, subtitleSize, frameRateMatching, networkCache, playbackTrackSelections,
+        forcedSubtitles, frameRateMatching, networkCache, playbackTrackSelections,
         externalPlayerForwardSubtitles, assOverrideMode,
         playerShowPiP, playerShowEpisodes, playerShowSources,
-        fastNavigation, smoothFocus, playbackDiagnostics, playbackDebug, focusHighlighter
+        playbackDiagnostics, playbackDebug, focusHighlighter
     ] + SubtitleStyleKey.all
 }
 
@@ -1981,12 +1968,8 @@ private struct AppearanceSettingsView: View {
     /// BCP-47 language tag; empty string means System default (matches Android TV).
     @AppStorage(SettingsKey.language) private var languageTag = ""
     @AppStorage(SettingsKey.amoled) private var amoled = false
-    @AppStorage(SettingsKey.amoledSurfaces) private var amoledSurfaces = false
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadius = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
     @ObservedObject private var localeManager = AppLocaleManager.shared
 
-    private let cardRadiusOptions = CardCornerRadiusOption.allCases.map(\.rawValue)
 
     private var accentSwatches: [SettingsSwatch] {
         SettingsAccent.allCases.map { SettingsSwatch(id: $0.rawValue, label: $0.rawValue, color: $0.color) }
@@ -2002,46 +1985,6 @@ private struct AppearanceSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            SettingsGroup(
-                title: L10n.string("settings_poster_card_style", fallback: "Card & Poster Style"),
-                subtitle: L10n.string(
-                    "settings_poster_description",
-                    fallback: "Customize card corner radius and Apple TV liquid glass appearance"
-                )
-            ) {
-                CardStyleLivePreview(
-                    cornerRadiusOption: CardCornerRadiusOption.from(rawValue: cardCornerRadius),
-                    isLiquidGlass: liquidGlassCards,
-                    accentColor: accentColor
-                )
-
-                SettingsOptionRow(
-                    title: L10n.string("settings_poster_card_radius", fallback: "Corner Radius"),
-                    subtitle: L10n.string(
-                        "tvos_card_radius_subtitle",
-                        fallback: "Choose sharp, subtle, classic, rounded, or pill card corners"
-                    ),
-                    selection: $cardCornerRadius,
-                    options: cardRadiusOptions,
-                    accentColor: accentColor
-                )
-                .onAppear {
-                    if CardCornerRadiusOption(rawValue: cardCornerRadius) == nil {
-                        cardCornerRadius = CardCornerRadiusOption.from(rawValue: cardCornerRadius).rawValue
-                    }
-                }
-
-                SettingsToggleRow(
-                    title: L10n.string("tvos_liquid_glass_cards", fallback: "Liquid Glass Cards"),
-                    subtitle: L10n.string(
-                        "tvos_liquid_glass_cards_subtitle",
-                        fallback: "Apply Apple TV frosted liquid glass effect, specular reflections, and translucent materials to portrait, landscape, and episode cards"
-                    ),
-                    isOn: $liquidGlassCards,
-                    accentColor: accentColor
-                )
-            }
-
             SettingsGroup(
                 title: L10n.string("tvos_appearance_focus_outline", fallback: "Focus Outline"),
                 subtitle: L10n.string(
@@ -2071,18 +2014,6 @@ private struct AppearanceSettingsView: View {
                     isOn: $amoled,
                     accentColor: accentColor
                 )
-
-                SettingsToggleRow(
-                    title: L10n.string("appearance_amoled_surfaces_mode", fallback: "AMOLED Surfaces"),
-                    subtitle: L10n.string(
-                        "appearance_amoled_surfaces_mode_subtitle",
-                        fallback: "Flatten card and row surfaces when AMOLED mode is enabled"
-                    ),
-                    isOn: $amoledSurfaces,
-                    accentColor: accentColor
-                )
-                .opacity(amoled ? 1 : 0.46)
-                .disabled(!amoled)
             }
 
             SettingsGroup(
@@ -2125,9 +2056,6 @@ private struct AppearanceSettingsView: View {
                 languageTag = resolved.tag
             }
         }
-        .onChange(of: cardCornerRadius) { _, _ in
-            ProfileSettings.notifySettingsChanged()
-        }
         .onChange(of: theme) { _, _ in
             ProfileSettings.notifySettingsChanged()
         }
@@ -2137,198 +2065,21 @@ private struct AppearanceSettingsView: View {
         .onChange(of: amoled) { _, _ in
             ProfileSettings.notifySettingsChanged()
         }
-        .onChange(of: liquidGlassCards) { _, _ in
-            ProfileSettings.notifySettingsChanged()
-        }
     }
 }
 
 // MARK: - Card Style Live Preview
 
-private struct CardStyleLivePreview: View {
-    let cornerRadiusOption: CardCornerRadiusOption
-    let isLiquidGlass: Bool
-    let accentColor: Color
-
-    private var portraitRadius: CGFloat {
-        cornerRadiusOption.radius
-    }
-
-    private var landscapeRadius: CGFloat {
-        AppCardStyle.episodeCornerRadius(for: cornerRadiusOption.rawValue)
-    }
-
-    var body: some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 28) {
-                // Portrait Poster Preview
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("PORTRAIT")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white.opacity(0.55))
-                        .tracking(1.2)
-
-                    ZStack(alignment: .bottomLeading) {
-                        LinearGradient(
-                            colors: [
-                                accentColor.opacity(0.35),
-                                Color(red: 0.14, green: 0.08, blue: 0.26),
-                                Color(red: 0.06, green: 0.04, blue: 0.12)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-
-                        Image(systemName: "film.stack.fill")
-                            .font(.system(size: 38))
-                            .foregroundColor(.white.opacity(0.35))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                        LinearGradient(
-                            colors: [.clear, .black.opacity(0.85)],
-                            startPoint: .center,
-                            endPoint: .bottom
-                        )
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Interstellar")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.white)
-                            Text("★ 8.7 · 2014")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.white.opacity(0.65))
-                        }
-                        .padding(12)
-                    }
-                    .frame(width: 140, height: 210)
-                    .clipShape(RoundedRectangle(cornerRadius: portraitRadius, style: .continuous))
-                    .modifier(
-                        LiquidGlassCardModifier(
-                            cornerRadius: portraitRadius,
-                            isFocused: true,
-                            isEnabled: isLiquidGlass
-                        )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: portraitRadius, style: .continuous)
-                            .stroke(AppFocusOutline.color, lineWidth: AppFocusOutline.width)
-                    )
-                }
-
-                // Landscape / Episode Card Preview
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("LANDSCAPE / EPISODE")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white.opacity(0.55))
-                        .tracking(1.2)
-
-                    ZStack(alignment: .bottomLeading) {
-                        LinearGradient(
-                            colors: [
-                                Color(red: 0.10, green: 0.18, blue: 0.32),
-                                Color(red: 0.05, green: 0.08, blue: 0.16)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-
-                        Image(systemName: "play.tv.fill")
-                            .font(.system(size: 38))
-                            .foregroundColor(.white.opacity(0.30))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                        // Episode badge
-                        VStack {
-                            HStack {
-                                Spacer()
-                                Text("EPISODE 4")
-                                    .font(.system(size: 12, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background {
-                                        if isLiquidGlass {
-                                            Capsule()
-                                                .fill(Color.white.opacity(0.18))
-                                                .modifier(LiquidGlassBadgeModifier(cornerRadius: 12))
-                                        } else {
-                                            Capsule().fill(Color.black.opacity(0.60))
-                                        }
-                                    }
-                                    .padding(12)
-                            }
-                            Spacer()
-                        }
-
-                        LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: 0.1),
-                                .init(color: .black.opacity(0.85), location: 0.75)
-                            ],
-                            startPoint: .center,
-                            endPoint: .bottom
-                        )
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Point of No Return")
-                                .font(.system(size: 18, weight: .bold))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                            Text("48m remaining")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.white.opacity(0.65))
-
-                            // Mini progress bar
-                            GeometryReader { pGeo in
-                                ZStack(alignment: .leading) {
-                                    Capsule().fill(Color.white.opacity(0.20))
-                                    Capsule().fill(accentColor)
-                                        .frame(width: pGeo.size.width * 0.65)
-                                }
-                            }
-                            .frame(height: 4)
-                            .padding(.top, 4)
-                        }
-                        .padding(14)
-                    }
-                    .frame(width: 340, height: 210)
-                    .clipShape(RoundedRectangle(cornerRadius: landscapeRadius, style: .continuous))
-                    .modifier(
-                        LiquidGlassCardModifier(
-                            cornerRadius: landscapeRadius,
-                            isFocused: true,
-                            isEnabled: isLiquidGlass
-                        )
-                    )
-                }
-            }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 24)
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
-            )
-        }
-        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: cornerRadiusOption)
-        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: isLiquidGlass)
-    }
-}
 
 // MARK: - Home Layout Live Preview
 
 private struct HomeLayoutLivePreview: View {
     let heroEnabled: Bool
     let posterLabels: Bool
-    let catalogAddonNames: Bool
     let accentColor: Color
 
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadius = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
+    private let cardCornerRadius = AppCardStyle.defaultCornerRadiusRaw
+    private let liquidGlassCards = true
 
     private func cardCornerRadius(forWidth width: CGFloat, isLandscape: Bool = false) -> CGFloat {
         let opt = CardCornerRadiusOption.from(rawValue: cardCornerRadius)
@@ -2449,7 +2200,6 @@ private struct HomeLayoutLivePreview: View {
         )
         .animation(.spring(response: 0.32, dampingFraction: 0.80), value: heroEnabled)
         .animation(.spring(response: 0.32, dampingFraction: 0.80), value: posterLabels)
-        .animation(.spring(response: 0.32, dampingFraction: 0.80), value: catalogAddonNames)
         .animation(.spring(response: 0.32, dampingFraction: 0.80), value: cardCornerRadius)
         .animation(.spring(response: 0.32, dampingFraction: 0.80), value: liquidGlassCards)
     }
@@ -2496,14 +2246,6 @@ private struct HomeLayoutLivePreview: View {
                 .font(.system(size: 11.5, weight: .bold))
                 .foregroundColor(.white.opacity(0.92))
 
-            if catalogAddonNames {
-                Text(addon)
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundColor(accentColor)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(accentColor.opacity(0.18), in: Capsule())
-            }
         }
     }
 
@@ -2662,7 +2404,6 @@ private struct LayoutDiscoverySettingsView: View {
 
     @AppStorage(SettingsKey.heroEnabled) private var heroEnabled = true
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.catalogAddonNames) private var catalogAddonNames = true
     @AppStorage(SettingsKey.discoverLocation) private var discoverLocation = "Search"
     @AppStorage(SettingsKey.continueWatchingSort) private var continueWatchingSort = "Default"
     @AppStorage(SettingsKey.upNextFromFurthestEpisode) private var upNextFromFurthestEpisode = true
@@ -2689,7 +2430,6 @@ private struct LayoutDiscoverySettingsView: View {
                 HomeLayoutLivePreview(
                     heroEnabled: heroEnabled,
                     posterLabels: posterLabels,
-                    catalogAddonNames: catalogAddonNames,
                     accentColor: accentColor
                 )
 
@@ -2712,19 +2452,6 @@ private struct LayoutDiscoverySettingsView: View {
                         fallback: "Show titles below poster cards"
                     ),
                     isOn: $posterLabels,
-                    accentColor: accentColor
-                )
-
-                SettingsToggleRow(
-                    title: L10n.string(
-                        "tvos_layout_catalog_addon_names",
-                        fallback: "Catalog Add-on Names"
-                    ),
-                    subtitle: L10n.string(
-                        "tvos_layout_catalog_addon_names_subtitle",
-                        fallback: "Show source add-on names beside catalog titles"
-                    ),
-                    isOn: $catalogAddonNames,
                     accentColor: accentColor
                 )
             }
@@ -6543,8 +6270,6 @@ private struct LanguagePickerListRow: View {
 private struct AdvancedSettingsView: View {
     let accentColor: Color
 
-    @AppStorage(SettingsKey.fastNavigation) private var fastNavigation = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
     @AppStorage(SettingsKey.playbackDiagnostics) private var playbackDiagnostics = false
     @AppStorage(SettingsKey.playbackDebug) private var playbackDebug = false
     @State private var isSeedingTestHistory = false
@@ -6555,29 +6280,6 @@ private struct AdvancedSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
-            SettingsGroup(
-                title: L10n.string("advanced_section_performance", fallback: "Navigation"),
-                subtitle: L10n.string(
-                    "tvos_advanced_focus",
-                    fallback: "Remote focus behavior for dense rows"
-                )
-            ) {
-                SettingsToggleRow(
-                    title: L10n.string("advanced_fast_horizontal_navigation", fallback: "Fast Horizontal Navigation"),
-                    subtitle: L10n.string("tvos_settings_move_through_long_poster_rows_more_aggressively", fallback: "Move through long poster rows more aggressively"),
-                    isOn: $fastNavigation,
-                    accentColor: accentColor
-                )
-                .settingsEntryAnchor()
-
-                SettingsToggleRow(
-                    title: L10n.string("tvos_settings_smooth_bring_into_view", fallback: "Smooth Bring Into View"),
-                    subtitle: L10n.string("tvos_settings_animate_focused_content_into_a_readable_position", fallback: "Animate focused content into a readable position"),
-                    isOn: $smoothFocus,
-                    accentColor: accentColor
-                )
-            }
-
             SettingsGroup(
                 title: L10n.string("advanced_section_diagnostics", fallback: "Diagnostics"),
                 subtitle: L10n.string(
