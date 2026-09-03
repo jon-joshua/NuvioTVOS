@@ -157,37 +157,6 @@ final class TVHomeStore: ObservableObject {
 // cards already visible ahead of focus to give network requests the same runway.
 let TVHomeRowPrefetchThreshold = 12
 
-enum TVHomeGridLayout {
-    static let columns = 7
-    static let rows = 3
-    static let previewItemCount = columns * rows - 1
-    // Same poster geometry as the See All catalog this grid links into
-    // (`CollectionFolderGridMetrics`), so a title is the same size on both.
-    static let posterWidth: CGFloat = 210
-    static let posterHeight: CGFloat = 315
-    static let itemSpacing: CGFloat = 28
-    static let sectionSpacing: CGFloat = 54
-    static let heroPageLimit = 7
-    static let seeAllID = "__see_all__"
-
-    static var gridColumns: [GridItem] {
-        Array(
-            repeating: GridItem(.fixed(posterWidth), spacing: itemSpacing, alignment: .top),
-            count: columns
-        )
-    }
-
-    static func isWatched(_ item: NuvioMeta, watchedTitleKeys: Set<String>) -> Bool? {
-        let type = item.type.lowercased()
-        let titleWatched = !watchedTitleKeys.isDisjoint(
-            with: WatchedStore.catalogTitleIdentityKeys(for: item)
-        )
-        guard ["series", "tv", "show", "tvshow"].contains(type) else {
-            return titleWatched
-        }
-        return titleWatched ? true : nil
-    }
-}
 
 /// Shared Home vertical rhythm for catalog *and* collection folder rows.
 enum TVHomeLayout {

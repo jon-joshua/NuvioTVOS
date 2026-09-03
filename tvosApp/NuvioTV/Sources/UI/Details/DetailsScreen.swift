@@ -3087,14 +3087,13 @@ private struct TvDetailsRelatedRow: View {
     let onFocus: () -> Void
 
     @State private var scrollIndex = 0
-    @AppStorage(SettingsKey.homeLayout) private var homeLayout = "Modern"
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
     @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
-    private var cardWidth: CGFloat { homeLayout == "Compact" ? 170 : 210 }
-    private var cardHeight: CGFloat { homeLayout == "Compact" ? 255 : 315 }
-    private var spacing: CGFloat { homeLayout == "Compact" ? 22 : 28 }
+    private var cardWidth: CGFloat { 210 }
+    private var cardHeight: CGFloat { 315 }
+    private var spacing: CGFloat { 28 }
     private var step: CGFloat { cardWidth + spacing }
     private var stripHeight: CGFloat {
         cardHeight + 36 + TvDetailsHorizontalStrip.verticalPadding * 2
@@ -3114,7 +3113,6 @@ private struct TvDetailsRelatedRow: View {
                             if scrollIndex != index { scrollIndex = index }
                             onFocus()
                         },
-                        layoutMode: homeLayout,
                         showPosterLabels: posterLabels,
                         smoothFocusAnimations: smoothFocus,
                         focusHighlighterEnabled: focusHighlighter

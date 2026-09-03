@@ -133,7 +133,6 @@
 		C0D310C0000000000000C0C0 /* NuvioTV/Sources/UI/Components/PosterTiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300C0000000000000C0C0 /* NuvioTV/Sources/UI/Components/PosterTiles.swift */; };
 		C0D310BF000000000000BFBF /* NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300BF000000000000BFBF /* NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift */; };
 		C0D310BE000000000000BEBE /* NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300BE000000000000BEBE /* NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift */; };
-		C0D310BD000000000000BDBD /* NuvioTV/Sources/UI/Home/TVHomeGridSections.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300BD000000000000BDBD /* NuvioTV/Sources/UI/Home/TVHomeGridSections.swift */; };
 		C0D310BC000000000000BCBC /* NuvioTV/Sources/UI/Home/TVHomeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300BC000000000000BCBC /* NuvioTV/Sources/UI/Home/TVHomeModels.swift */; };
 		C0D310BB000000000000BBBB /* NuvioTV/Sources/UI/Home/TVHomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300BB000000000000BBBB /* NuvioTV/Sources/UI/Home/TVHomeView.swift */; };
 		C0D310BA000000000000BABA /* NuvioTV/Sources/UI/Home/TVHomeHero.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300BA000000000000BABA /* NuvioTV/Sources/UI/Home/TVHomeHero.swift */; };
@@ -326,7 +325,6 @@
 		C0D300C0000000000000C0C0 /* NuvioTV/Sources/UI/Components/PosterTiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Components/PosterTiles.swift; sourceTree = "<group>"; };
 		C0D300BF000000000000BFBF /* NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift; sourceTree = "<group>"; };
 		C0D300BE000000000000BEBE /* NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift; sourceTree = "<group>"; };
-		C0D300BD000000000000BDBD /* NuvioTV/Sources/UI/Home/TVHomeGridSections.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/TVHomeGridSections.swift; sourceTree = "<group>"; };
 		C0D300BC000000000000BCBC /* NuvioTV/Sources/UI/Home/TVHomeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/TVHomeModels.swift; sourceTree = "<group>"; };
 		C0D300BB000000000000BBBB /* NuvioTV/Sources/UI/Home/TVHomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/TVHomeView.swift; sourceTree = "<group>"; };
 		C0D300BA000000000000BABA /* NuvioTV/Sources/UI/Home/TVHomeHero.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/TVHomeHero.swift; sourceTree = "<group>"; };
@@ -573,7 +571,6 @@
 				C0D300C0000000000000C0C0 /* NuvioTV/Sources/UI/Components/PosterTiles.swift */,
 				C0D300BF000000000000BFBF /* NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift */,
 				C0D300BE000000000000BEBE /* NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift */,
-				C0D300BD000000000000BDBD /* NuvioTV/Sources/UI/Home/TVHomeGridSections.swift */,
 				C0D300BC000000000000BCBC /* NuvioTV/Sources/UI/Home/TVHomeModels.swift */,
 				C0D300BB000000000000BBBB /* NuvioTV/Sources/UI/Home/TVHomeView.swift */,
 				C0D300BA000000000000BABA /* NuvioTV/Sources/UI/Home/TVHomeHero.swift */,
@@ -886,7 +883,6 @@
 				C0D310C0000000000000C0C0 /* NuvioTV/Sources/UI/Components/PosterTiles.swift in Sources */,
 				C0D310BF000000000000BFBF /* NuvioTV/Sources/UI/Home/CollectionFolderBrowseView.swift in Sources */,
 				C0D310BE000000000000BEBE /* NuvioTV/Sources/UI/Home/TVCollectionFolderRow.swift in Sources */,
-				C0D310BD000000000000BDBD /* NuvioTV/Sources/UI/Home/TVHomeGridSections.swift in Sources */,
 				C0D310BC000000000000BCBC /* NuvioTV/Sources/UI/Home/TVHomeModels.swift in Sources */,
 				C0D310BB000000000000BBBB /* NuvioTV/Sources/UI/Home/TVHomeView.swift in Sources */,
 				C0D310BA000000000000BABA /* NuvioTV/Sources/UI/Home/TVHomeHero.swift in Sources */,

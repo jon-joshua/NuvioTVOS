@@ -11,13 +11,12 @@ import SwiftUI
 struct TVLoadingCatalogRow: View {
     let title: String
 
-    @AppStorage(SettingsKey.homeLayout) private var homeLayout = "Modern"
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
     @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
 
-    private var cardWidth: CGFloat { homeLayout == "Compact" ? 170 : 210 }
-    private var cardHeight: CGFloat { homeLayout == "Compact" ? 255 : 315 }
-    private var cardSpacing: CGFloat { homeLayout == "Compact" ? 22 : 28 }
+    private let cardWidth: CGFloat = 210
+    private let cardHeight: CGFloat = 315
+    private let cardSpacing: CGFloat = 28
 
     /// Matches `HomePosterRow.stripHeight`, so swapping a skeleton for the real
     /// row changes nothing about the rows below it.
@@ -102,17 +101,16 @@ struct HomePosterRow: View {
     /// Meta id of the card pinned to the gutter — the `ForEach` identity the
     /// scroll view positions on. Nil until the row has laid out once.
     @State private var leadingCardID: String?
-    @AppStorage(SettingsKey.homeLayout) private var homeLayout = "Modern"
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
     @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     private var compactPosterWidth: CGFloat {
-        homeLayout == "Compact" ? 170 : 210
+        210
     }
 
     private var rowSpacing: CGFloat {
-        homeLayout == "Compact" ? 22 : 28
+        28
     }
 
     private var rowPrefix: String { "\(id)\u{1}" }
@@ -145,7 +143,7 @@ struct HomePosterRow: View {
 
     // Card height (315) + vertical breathing room for the focus border/shadow.
     private var stripHeight: CGFloat {
-        let imageHeight: CGFloat = homeLayout == "Compact" ? 255 : 315
+        let imageHeight: CGFloat = 315
         return imageHeight + (posterLabels ? 48 : 0) + TVHomeLayout.stripVerticalPadding * 2
     }
 
@@ -226,7 +224,7 @@ struct HomePosterRow: View {
         let progressItem = progressByItemId[item.id]
         PosterCard(
             meta: item,
-            isLandscape: homeLayout == "Modern" && landscapeFocusedId == cardKey,
+            isLandscape: landscapeFocusedId == cardKey,
             continueProgress: progressItem?.progress,
             continueRemainingText: progressItem?.remainingText,
             continueEpisodeText: progressItem?.episodeLabel,
@@ -252,7 +250,6 @@ struct HomePosterRow: View {
             onRemoveFromContinueWatching: ((id == TVHomeSection.continueWatchingId || id == TVHomeSection.upcomingId) && progressItem != nil) ? {
                 if let p = progressItem { onRemoveFromContinueWatching?(p) }
             } : nil,
-            layoutMode: homeLayout,
             showPosterLabels: posterLabels,
             smoothFocusAnimations: cardFocusAnimations,
             focusHighlighterEnabled: focusHighlighter,

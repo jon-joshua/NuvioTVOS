@@ -121,7 +121,6 @@ enum SettingsKey {
     static let amoledSurfaces = "nuvio.tv.settings.appearance.amoledSurfaces"
     static let reduceMotion = "nuvio.tv.settings.appearance.reduceMotion"
 
-    static let homeLayout = "nuvio.tv.settings.layout.homeLayout"
     /// JSON `[String]` of home section ids in the user's preferred order.
     static let homeCatalogOrder = "nuvio.tv.settings.layout.homeCatalogOrder"
     /// JSON `[String: String]` snapshot of section id → title, written by Home
@@ -148,7 +147,6 @@ enum SettingsKey {
     static let heroEnabled = "nuvio.tv.settings.layout.heroEnabled"
     /// JSON `[String]` of Home section ids selected as Grid View hero sources.
     /// Empty means all available catalog rows.
-    static let heroCatalogs = "nuvio.tv.settings.layout.heroCatalogs"
     static let posterLabels = "nuvio.tv.settings.layout.posterLabels"
     static let catalogAddonNames = "nuvio.tv.settings.layout.catalogAddonNames"
     static let discoverLocation = "nuvio.tv.settings.layout.discoverLocation"
@@ -282,7 +280,7 @@ enum SettingsKey {
         profileName, profilePinEnabled, profileAutoSelectLast, profileRequireSelectionAfterBackground,
         accountSyncWatchState,
         theme, bodyColor, font, language, amoled, amoledSurfaces, reduceMotion,
-        homeLayout, heroEnabled, heroCatalogs, posterLabels, catalogAddonNames, discoverLocation,
+        heroEnabled, posterLabels, catalogAddonNames, discoverLocation,
         continueWatchingSort, upNextFromFurthestEpisode, showUnairedNextUp,
         cardCornerRadius, cardSize, liquidGlassCards,
         hideUnreleased, showFullDates,
@@ -2324,7 +2322,6 @@ private struct CardStyleLivePreview: View {
 // MARK: - Home Layout Live Preview
 
 private struct HomeLayoutLivePreview: View {
-    let layout: String
     let heroEnabled: Bool
     let posterLabels: Bool
     let catalogAddonNames: Bool
@@ -2424,16 +2421,8 @@ private struct HomeLayoutLivePreview: View {
                             .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                     }
 
-                    if layout == "Grid View" {
-                        gridViewSection
-                            .transition(.opacity)
-                    } else if layout == "Compact" {
-                        compactRowsSection
-                            .transition(.opacity)
-                    } else {
-                        modernRowsSection
-                            .transition(.opacity)
-                    }
+                    modernRowsSection
+                        .transition(.opacity)
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
@@ -2458,7 +2447,6 @@ private struct HomeLayoutLivePreview: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
         )
-        .animation(.spring(response: 0.32, dampingFraction: 0.80), value: layout)
         .animation(.spring(response: 0.32, dampingFraction: 0.80), value: heroEnabled)
         .animation(.spring(response: 0.32, dampingFraction: 0.80), value: posterLabels)
         .animation(.spring(response: 0.32, dampingFraction: 0.80), value: catalogAddonNames)
@@ -2604,49 +2592,9 @@ private struct HomeLayoutLivePreview: View {
 
     // MARK: - Compact Rows Layout
 
-    private var compactRowsSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            VStack(alignment: .leading, spacing: 4) {
-                rowHeader(title: "Popular - Movies", addon: "Cinemeta")
-
-                HStack(spacing: 8) {
-                    ForEach(0..<8, id: \.self) { idx in
-                        let item = movies[idx % movies.count]
-                        miniPortraitCard(width: 62, height: 86, item: item, isFocused: idx == 0)
-                    }
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                rowHeader(title: "Popular - Series", addon: "TMDB")
-
-                HStack(spacing: 8) {
-                    ForEach(1..<9, id: \.self) { idx in
-                        let item = movies[idx % movies.count]
-                        miniPortraitCard(width: 62, height: 86, item: item)
-                    }
-                }
-            }
-        }
-    }
 
     // MARK: - Grid View Layout
 
-    private var gridViewSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            rowHeader(title: "All Catalogs Grid", addon: "7 × 3 Grid")
-
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.fixed(75), spacing: 10), count: 7),
-                spacing: 6
-            ) {
-                ForEach(0..<(heroEnabled ? 7 : 14), id: \.self) { idx in
-                    let item = movies[idx % movies.count]
-                    miniPortraitCard(width: 75, height: heroEnabled ? 80 : 92, item: item, isFocused: idx == 0)
-                }
-            }
-        }
-    }
 
     // MARK: - Mini Portrait Card
 
@@ -2712,9 +2660,7 @@ private struct HomeLayoutLivePreview: View {
 private struct LayoutDiscoverySettingsView: View {
     let accentColor: Color
 
-    @AppStorage(SettingsKey.homeLayout) private var homeLayout = "Modern"
     @AppStorage(SettingsKey.heroEnabled) private var heroEnabled = true
-    @AppStorage(SettingsKey.heroCatalogs) private var heroCatalogsData = Data()
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
     @AppStorage(SettingsKey.catalogAddonNames) private var catalogAddonNames = true
     @AppStorage(SettingsKey.discoverLocation) private var discoverLocation = "Search"
@@ -2726,8 +2672,6 @@ private struct LayoutDiscoverySettingsView: View {
     @AppStorage(SettingsKey.focusedPosterBackdropEnabled) private var focusedPosterBackdropEnabled = true
     @AppStorage(SettingsKey.focusedPosterBackdropDelay) private var focusedPosterBackdropDelay = 3
 
-    /// Classic was never a distinct layout (behaved like Modern).
-    private let layouts = ["Modern", "Compact", "Grid View"]
     // Search is the only screen that currently hosts the full Discover surface.
     // Do not offer Home/Library as dead selections that merely hide Discover.
     private let discoverLocations = ["Search", "Off"]
@@ -2743,27 +2687,12 @@ private struct LayoutDiscoverySettingsView: View {
                 )
             ) {
                 HomeLayoutLivePreview(
-                    layout: homeLayout,
                     heroEnabled: heroEnabled,
                     posterLabels: posterLabels,
                     catalogAddonNames: catalogAddonNames,
                     accentColor: accentColor
                 )
 
-                SettingsOptionRow(
-                    title: L10n.string("tvos_layout_layout", fallback: "Layout"),
-                    subtitle: L10n.string(
-                        "tvos_layout_layout_subtitle",
-                        fallback: "Modern and Compact use rows; Grid View shows each catalog in a 7 by 3 poster grid"
-                    ),
-                    selection: $homeLayout,
-                    options: layouts,
-                    accentColor: accentColor
-                )
-                .settingsEntryAnchor()
-                .onAppear {
-                    if homeLayout == "Classic" { homeLayout = "Modern" }
-                }
 
                 SettingsToggleRow(
                     title: L10n.string("tvos_layout_hero", fallback: "Hero Section"),
@@ -2775,13 +2704,6 @@ private struct LayoutDiscoverySettingsView: View {
                     accentColor: accentColor
                 )
 
-                if homeLayout == "Grid View" {
-                    HeroCatalogSelectionRow(
-                        selectionData: $heroCatalogsData,
-                        accentColor: accentColor
-                    )
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
 
                 SettingsToggleRow(
                     title: L10n.string("tvos_layout_poster_labels", fallback: "Poster Labels"),
@@ -2946,100 +2868,6 @@ private struct LayoutDiscoverySettingsView: View {
     }
 }
 
-/// Grid View-only multi-select for choosing which Home catalogs feed the hero
-/// carousel. An empty saved selection represents the default "all catalogs".
-private struct HeroCatalogSelectionRow: View {
-    @Binding var selectionData: Data
-    let accentColor: Color
-    @State private var catalogs: [TVHomeCatalogOrder.SnapshotRow] = []
-
-    private var explicitlySelected: Set<String> {
-        guard let ids = try? JSONDecoder().decode([String].self, from: selectionData) else { return [] }
-        return Set(ids)
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(L10n.string("layout_hero_catalogs", fallback: "Hero Catalogs"))
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundColor(.white)
-                Text(L10n.string(
-                    "layout_hero_catalogs_sub",
-                    fallback: "Select one or more catalogs for hero content."
-                ))
-                .font(.system(size: 18, weight: .medium))
-                .foregroundColor(.white.opacity(0.56))
-            }
-
-            if catalogs.isEmpty {
-                SettingsInfoRow(
-                    title: L10n.string("tvos_settings_no_rows_recorded_yet", fallback: "No catalogs recorded yet"),
-                    value: L10n.string("tvos_settings_open_home_once", fallback: "Open Home once")
-                )
-            } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
-                        ForEach(catalogs, id: \.id) { catalog in
-                            CollectionChipButton(
-                                title: catalog.title,
-                                isSelected: isSelected(catalog.id)
-                            ) {
-                                toggle(catalog.id)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 6)
-                }
-                .focusSection()
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
-        .animation(.easeInOut(duration: 0.2), value: selectionData)
-        .onAppear { loadCatalogs() }
-        .onReceive(NotificationCenter.default.publisher(for: TVHomeCatalogOrder.changedNotification)) { _ in
-            loadCatalogs()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NuvioSyncManager.addonOrderChangedNotification)) { _ in
-            loadCatalogs()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: NuvioSyncManager.homeContentSyncedNotification)) { _ in
-            loadCatalogs()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: TVHomeCatalogOrder.snapshotChangedNotification)) { _ in
-            loadCatalogs()
-        }
-    }
-
-    private func isSelected(_ id: String) -> Bool {
-        explicitlySelected.isEmpty || explicitlySelected.contains(id)
-    }
-
-    private func toggle(_ id: String) {
-        var selected = explicitlySelected
-        if selected.isEmpty { selected = Set(catalogs.map(\.id)) }
-        if selected.contains(id) {
-            guard selected.count > 1 else { return }
-            selected.remove(id)
-        } else {
-            selected.insert(id)
-        }
-        selectionData = (try? JSONEncoder().encode(catalogs.map(\.id).filter(selected.contains))) ?? Data()
-    }
-
-    private func loadCatalogs() {
-        // A row hidden from Home stays in the snapshot so it can be restored, but
-        // it has no items to draw a hero from — so it is not offered here.
-        catalogs = layoutVisibleHomeCatalogRows().filter {
-            $0.id != TVHomeSection.continueWatchingId
-                && $0.id != TVHomeSection.upcomingId
-                && !$0.id.hasPrefix(TVHomeSection.collectionIdPrefix)
-                && TVHomeCatalogOrder.isRowEnabled($0)
-        }
-    }
-}
 
 /// The Home snapshot intentionally keeps hidden rows so they can be restored.
 /// Add-on rows need one extra filter here: disabling an add-on removes its Home

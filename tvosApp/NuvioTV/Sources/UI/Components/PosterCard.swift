@@ -178,7 +178,6 @@ struct PosterCard: View {
     var onPlayManually: (() -> Void)? = nil
     var onStartFromBeginning: (() -> Void)? = nil
     var onRemoveFromContinueWatching: (() -> Void)? = nil
-    var layoutMode: String = "Modern"
     var showPosterLabels: Bool = false
     var smoothFocusAnimations: Bool = true
     var focusHighlighterEnabled: Bool = false
@@ -395,7 +394,7 @@ struct PosterCard: View {
 
             if showsPosterTitle {
                 Text(meta.name)
-                    .font(.system(size: effectiveHomeLayout == "Compact" ? 18 : 20, weight: showsFocusedAppearance ? .semibold : .medium))
+                    .font(.system(size: 20, weight: showsFocusedAppearance ? .semibold : .medium))
                     .foregroundColor(titleColor)
                     .lineLimit(1)
                     .frame(width: cardWidth, alignment: .leading)
@@ -585,9 +584,6 @@ struct PosterCard: View {
     // MARK: - Computed Properties
 
     #if os(tvOS)
-    private var effectiveHomeLayout: String {
-        layoutMode
-    }
 
     private var effectivePosterLabels: Bool {
         showPosterLabels
@@ -609,7 +605,7 @@ struct PosterCard: View {
         if effectiveLandscape {
             return 560
         }
-        return effectiveHomeLayout == "Compact" ? 170 : 210
+        return 210
     }
 
     /// Width the card occupies in the row layout — and therefore its focus
@@ -618,11 +614,11 @@ struct PosterCard: View {
     /// vertical navigation onto the neighbouring column. The 560pt landscape art
     /// overflows this frame to the right and is drawn above siblings (zIndex).
     private var layoutWidth: CGFloat {
-        effectiveHomeLayout == "Compact" ? 170 : 210
+        210
     }
 
     private var cardHeight: CGFloat {
-        effectiveLandscape ? 315 : (effectiveHomeLayout == "Compact" ? 255 : 315)
+        effectiveLandscape ? 315 : 315
     }
 
     private var totalCardHeight: CGFloat {
@@ -864,7 +860,6 @@ struct PosterCardStaticKey: Equatable {
     let hasOnPlayManually: Bool
     let hasOnStartFromBeginning: Bool
     let hasOnRemoveFromContinueWatching: Bool
-    let layoutMode: String
     let showPosterLabels: Bool
     let smoothFocusAnimations: Bool
     let focusHighlighterEnabled: Bool
@@ -902,7 +897,6 @@ extension PosterCard {
             hasOnPlayManually: onPlayManually != nil,
             hasOnStartFromBeginning: onStartFromBeginning != nil,
             hasOnRemoveFromContinueWatching: onRemoveFromContinueWatching != nil,
-            layoutMode: layoutMode,
             showPosterLabels: showPosterLabels,
             smoothFocusAnimations: smoothFocusAnimations,
             focusHighlighterEnabled: focusHighlighterEnabled,

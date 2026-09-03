@@ -113,7 +113,6 @@ extension CrossfadingBackdrop: Equatable {
 /// making this line sit too high.
 struct TVCollectionFolderHeroView: View {
     let folder: TVCollectionFolderItem
-    @AppStorage(SettingsKey.homeLayout) private var homeLayout = "Modern"
 
     private var emoji: String? {
         let raw = folder.coverEmoji?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -125,7 +124,7 @@ struct TVCollectionFolderHeroView: View {
     }
 
     private var heroHeight: CGFloat {
-        homeLayout == "Compact" ? 390 : 500
+        500
     }
 
     var body: some View {
@@ -173,7 +172,6 @@ struct TVHeroView: View {
     /// episode's own overview instead of the series blurb.
     var continueItem: ContinueWatchingItem? = nil
     let onSelect: () -> Void
-    @AppStorage(SettingsKey.homeLayout) private var homeLayout = "Modern"
 
     var body: some View {
         let _ = TVHomeDebugTrace.log("hero.render meta=\(meta.id)")
@@ -207,9 +205,9 @@ struct TVHeroView: View {
         }
         .foregroundColor(.white)
         .padding(.leading, TVLayout.rowLeading)
-        .padding(.top, homeLayout == "Compact" ? 82 : 140)
+        .padding(.top, 140)
         .padding(.bottom, TVHomeLayout.heroBottomPadding)
-        .frame(height: homeLayout == "Compact" ? 390 : 500, alignment: .bottomLeading)
+        .frame(height: 500, alignment: .bottomLeading)
     }
 
     /// "S1 E3 · Title" for the episode in progress; nil for movies or when the
@@ -244,218 +242,6 @@ extension TVHeroView: Equatable {
     }
 }
 
-/// Grid View's featured carousel, matching Android TV's `HeroCarousel`: a
-/// large near-full-screen banner, local backdrop/gradients, remote paging, Select to
-/// open details, and auto-advance only while the hero is not focused.
-struct TVGridHeroSlideshowView: View {
-    let items: [NuvioMeta]
-    @Binding var selectedIndex: Int
-    let shouldRequestInitialFocus: Bool
-    let onInitialFocusRequested: () -> Void
-    /// Safe-area inset the artwork bleeds past on each side. Only the backdrop
-    /// widens — the hero's frame, its text, and the focus geometry stay inside
-    /// the safe area.
-    var backdropBleed: CGFloat = 0
-    var onFocusChange: ((Bool) -> Void)? = nil
-    let onSelect: (NuvioMeta) -> Void
-
-    @AppStorage(SettingsKey.amoled) private var amoled = false
-    @AppStorage(SettingsKey.bodyColor) private var bodyColor = SettingsBackground.charcoal.rawValue
-    @FocusState private var isFocused: Bool
-
-    private var index: Int {
-        guard !items.isEmpty else { return 0 }
-        return min(max(selectedIndex, 0), items.count - 1)
-    }
-
-    private var activeItem: NuvioMeta? { items.indices.contains(index) ? items[index] : nil }
-
-    /// Backdrop + scrims. Drawn as a `background` so it can be widened past the
-    /// hero without changing the hero's own frame — the focus engine routes a
-    /// left press off that frame, and a hero reaching x=0 sits under the
-    /// collapsed sidebar.
-    @ViewBuilder
-    private func artLayer(_ item: NuvioMeta) -> some View {
-        let background = Color.nuvioBackground(amoled: amoled, body: bodyColor)
-
-        ZStack {
-            CrossfadingBackdrop(
-                url: item.backgroundUrl ?? item.posterUrl,
-                placeholder: background,
-                alignment: .top
-            )
-
-            LinearGradient(
-                stops: [
-                    .init(color: background.opacity(0.98), location: 0),
-                    .init(color: background.opacity(0.88), location: 0.16),
-                    .init(color: background.opacity(0.56), location: 0.34),
-                    .init(color: background.opacity(0.20), location: 0.56),
-                    .init(color: .clear, location: 0.72)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.30),
-                    .init(color: background.opacity(0.50), location: 0.60),
-                    .init(color: background.opacity(0.85), location: 0.80),
-                    .init(color: background, location: 1)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-        .padding(.horizontal, -backdropBleed)
-    }
-
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            if let activeItem {
-                gridHeroContent(activeItem)
-                    .id(activeItem.id)
-                    .transition(.opacity)
-            }
-
-            if items.count > 1 {
-                HStack(spacing: 12) {
-                    ForEach(items.indices, id: \.self) { dotIndex in
-                        Capsule()
-                            .fill(indicatorColor(for: dotIndex))
-                            .frame(
-                                width: dotIndex == index ? (isFocused ? 48 : 36) : 18,
-                                height: isFocused && dotIndex == index ? 6 : 4
-                            )
-                    }
-                }
-                .animation(.easeInOut(duration: 0.30), value: index)
-                .padding(.bottom, 24)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        // Match the tall Android Grid hero. Besides giving the design the same
-        // visual weight, this keeps 16:9 artwork from being vertically cropped
-        // into an ultra-wide 5:1 strip where the subject disappears.
-        .frame(height: 820)
-        .clipped()
-        // After `clipped()`, so the widened artwork isn't trimmed back to the
-        // hero's frame.
-        .background {
-            if let activeItem { artLayer(activeItem) }
-        }
-        .contentShape(Rectangle())
-        .focusable(true)
-        .focusEffectDisabledIfAvailable()
-        .focused($isFocused)
-        .onAppear {
-            guard shouldRequestInitialFocus else { return }
-            onInitialFocusRequested()
-            DispatchQueue.main.async { isFocused = true }
-        }
-        .onTapGesture {
-            if let activeItem { onSelect(activeItem) }
-        }
-        .onMoveCommand { direction in
-            switch direction {
-            case .left where index > 0:
-                setIndex(index - 1)
-                // The sidebar sits to our left and the focus engine acts on this
-                // same press, so paging back would also open the menu. Claim
-                // focus again to keep the press here. At index 0 it is left
-                // alone, so the first slide still exits to the menu.
-                isFocused = true
-                DispatchQueue.main.async { isFocused = true }
-            case .right where index < items.count - 1:
-                setIndex(index + 1)
-            default:
-                break
-            }
-        }
-        .onChange(of: isFocused) { _, focused in
-            onFocusChange?(focused)
-        }
-        .task(id: "\(items.map(\.id).joined(separator: "|"))|\(isFocused)") {
-            guard items.count > 1 else { return }
-            // Android lets the initial GPU/image work settle for 20 seconds,
-            // then checks for the next unfocused advance every 10 seconds.
-            try? await Task.sleep(nanoseconds: 20_000_000_000)
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 10_000_000_000)
-                guard !Task.isCancelled else { return }
-                if !isFocused { setIndex((index + 1) % items.count) }
-            }
-        }
-        .onChange(of: items.count) { _, count in
-            if count == 0 { selectedIndex = 0 }
-            else if selectedIndex >= count { selectedIndex = count - 1 }
-        }
-    }
-
-    @ViewBuilder
-    private func gridHeroContent(_ item: NuvioMeta) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if let logoURL = item.logoUrl, !logoURL.isEmpty {
-                CachedHeroLogo(url: logoURL, title: item.name)
-                    .frame(maxHeight: 88, alignment: .leading)
-            } else {
-                Text(item.name)
-                    .font(.custom("Inter-Bold", size: 46))
-                    .foregroundColor(.white)
-                    .lineLimit(2)
-            }
-
-            HStack(spacing: 18) {
-                if let rating = item.rating {
-                    Text(String(format: "IMDb %.1f", rating))
-                }
-                if let year = item.year {
-                    Text(String(year))
-                }
-            }
-            .font(.custom("Inter-SemiBold", size: 21))
-            .foregroundColor(.white.opacity(0.80))
-
-            if let genres = item.genres, !genres.isEmpty {
-                HStack(spacing: 10) {
-                    ForEach(Array(genres.prefix(3)), id: \.self) { genre in
-                        Text(genre)
-                            .font(.custom("Inter-Medium", size: 18))
-                            .foregroundColor(.white.opacity(0.72))
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(Color.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
-                    }
-                }
-            }
-
-            if let description = item.description, !description.isEmpty {
-                Text(description)
-                    .font(.custom("Inter-Regular", size: 21))
-                    .foregroundColor(.white.opacity(0.72))
-                    .lineLimit(2)
-                    .lineSpacing(2)
-            }
-        }
-        .frame(maxWidth: 860, alignment: .leading)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-        .padding(.leading, TVLayout.rowLeading)
-        .padding(.trailing, TVLayout.rowLeading)
-        .padding(.bottom, 58)
-    }
-
-    private func indicatorColor(for dotIndex: Int) -> Color {
-        if dotIndex == index { return AppFocusOutline.color }
-        return isFocused ? AppFocusOutline.color.opacity(0.40) : Color.white.opacity(0.30)
-    }
-
-    private func setIndex(_ newIndex: Int) {
-        withAnimation(.easeInOut(duration: 0.30)) {
-            selectedIndex = newIndex
-        }
-    }
-}
 
 private struct CachedHeroLogo: View {
     let url: String

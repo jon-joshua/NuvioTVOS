@@ -329,10 +329,6 @@ enum L10n {
             return string("tvos_settings_option_auto", fallback: "Auto")
         case "Modern":
             return string("tvos_settings_option_modern", fallback: "Modern")
-        case "Compact":
-            return string("tvos_settings_option_compact", fallback: "Compact")
-        case "Grid View":
-            return string("tvos_settings_option_grid_view", fallback: "Grid View")
         case "Search":
             return string("nav_search", fallback: "Search")
         case "Home":
