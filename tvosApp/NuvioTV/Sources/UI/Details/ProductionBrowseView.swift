@@ -338,7 +338,7 @@ private struct NetworkBrowseRail: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text(rail.title)
-                .font(.system(size: 34, weight: .semibold))
+                .font(.system(size: 38, weight: .semibold))
                 .foregroundColor(.white.opacity(0.92))
                 .padding(.horizontal, 80)
 
@@ -495,9 +495,9 @@ struct PersonBrowseView: View {
 }
 
 private enum TmdbBrowseGridMetrics {
-    static let posterWidth: CGFloat = 210
-    static let posterHeight: CGFloat = 315
-    static let posterGap: CGFloat = 28
+    static let posterWidth: CGFloat = 260
+    static let posterHeight: CGFloat = 390
+    static let posterGap: CGFloat = 40
 
     static var columns: [GridItem] {
         [GridItem(

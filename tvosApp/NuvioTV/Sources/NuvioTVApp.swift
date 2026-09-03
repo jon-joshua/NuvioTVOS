@@ -1710,11 +1710,11 @@ private struct AccountSyncWaitView: View {
                 .scaleEffect(1.6)
 
             Text("Syncing your account")
-                .font(.custom("Inter-Bold", size: 44))
+                .font(.system(size: 44, weight: .bold))
                 .foregroundColor(.white)
 
             Text("Hang tight while we import your profiles and watch history.")
-                .font(.custom("Inter-Regular", size: 28))
+                .font(.system(size: 28, weight: .regular))
                 .foregroundColor(.white.opacity(0.6))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -2450,9 +2450,12 @@ enum NuvioRuntimeDisplay {
 
 
 enum TVLayout {
-    static let contentLeading: CGFloat = 10
-    /// Shared gutter: every screen starts its content here, clear of the rail.
-    static let rowLeading: CGFloat = NavigationRailMetrics.contentLeading
+    /// Wide inset for screens that still centre their content (Settings, state views).
+    static let contentLeading: CGFloat = 150
+    /// Home's gutter beyond the safe area. Zero: the hero, the section titles
+    /// and the first poster start at the 80pt safe area, as in the TV app; the
+    /// system sidebar overlays that strip.
+    static let rowLeading: CGFloat = 0
 }
 
 extension Color {

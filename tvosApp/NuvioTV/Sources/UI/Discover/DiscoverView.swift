@@ -1,9 +1,9 @@
 import SwiftUI
 
 enum DiscoverGridMetrics {
-    static let posterWidth: CGFloat = 210
-    static let posterHeight: CGFloat = 315
-    static let posterGap: CGFloat = 28
+    static let posterWidth: CGFloat = 260
+    static let posterHeight: CGFloat = 390
+    static let posterGap: CGFloat = 40
 }
 
 /// Embeddable Discover section — a filterable poster grid (type / sort / genre)

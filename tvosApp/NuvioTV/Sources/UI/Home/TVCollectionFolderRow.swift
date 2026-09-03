@@ -11,7 +11,7 @@ import OSLog
 /// (poster / square / landscape) so mixed shapes align on one baseline.
 private enum TVCollectionFolderCardLayout {
     static func cardHeight() -> CGFloat {
-        315
+        390
     }
 
     /// Width from fixed height × shape aspect ratio.
@@ -22,17 +22,17 @@ private enum TVCollectionFolderCardLayout {
         switch shape {
         case .poster:
             // Match catalog `PosterCard` portrait width exactly.
-            return 210
+            return 260
         case .landscape:
             // Match PosterCard's focused Home landscape width exactly.
-            return 560
+            return 693
         case .square:
             return (height * CGFloat(shape.aspectRatio)).rounded()
         }
     }
 
     static func rowSpacing() -> CGFloat {
-        28
+        40
     }
 
     /// Leading-edge offset of the card at `index` (sum of prior widths + gaps).
@@ -60,8 +60,6 @@ struct TVCollectionFolderRow: View {
     let horizontalEdgeInset: CGFloat
     let folders: [TVCollectionFolderItem]
     let initialScrollIndex: Int
-    /// See TVHomeView.resetRowsForRail.
-    var resetGeneration: Int = 0
     let onScrollIndexChange: (Int) -> Void
     let initialFocusCardKey: String?
     var externalFocus: FocusState<String?>.Binding? = nil
@@ -90,7 +88,7 @@ struct TVCollectionFolderRow: View {
 
     /// Same strip math as `TVCatalogRow`.
     private var stripHeight: CGFloat {
-        imageHeight + (showsAnyLabels ? 48 : 0) + TVHomeLayout.stripVerticalPadding * 2
+        imageHeight + (showsAnyLabels ? TVHomeLayout.captionBlock : 0) + TVHomeLayout.stripVerticalPadding * 2
     }
 
     private var showsAnyLabels: Bool {
@@ -141,22 +139,9 @@ struct TVCollectionFolderRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.custom("Inter-Bold", size: 30))
-                .foregroundColor(.white)
-                .padding(.leading, TVLayout.rowLeading)
-                .offset(y: 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .zIndex(2)
-
-            cardStrip
-                .zIndex(0)
-        }
+        cardStrip
         .frame(maxWidth: .infinity, alignment: .leading)
-        .focusSection()
-.onChange(of: resetGeneration) { _, _ in resetToStart() }
-        .defaultFocusIfAvailable(externalFocus, defaultFocusFolderKey)
+        .focusSection()        .defaultFocusIfAvailable(externalFocus, defaultFocusFolderKey)
     }
 
     private var cardStrip: some View {
@@ -202,7 +187,7 @@ struct TVCollectionFolderRow: View {
                 )
             )
             .padding(.vertical, TVHomeLayout.stripVerticalPadding)
-            .offset(x: horizontalEdgeInset + TVLayout.rowLeading - scrollX)
+            .offset(x: horizontalEdgeInset - scrollX)
             .frame(
                 width: stripWidth,
                 height: stripHeight,
@@ -217,12 +202,6 @@ struct TVCollectionFolderRow: View {
         }
         .frame(height: stripHeight)
     }
-
-    /// Animate this row back to its first card (rail opened, see TVHomeView).
-    private func resetToStart() {
-        withAnimation(TVHomeLayout.scrollAnimation) { scrollIndex = 0 }
-        onScrollIndexChange(0)
-    }
 }
 
 // Keep row identity and horizontal state stable, while allowing the focused
@@ -231,9 +210,7 @@ extension TVCollectionFolderRow: Equatable {
     static func == (lhs: TVCollectionFolderRow, rhs: TVCollectionFolderRow) -> Bool {
         return lhs.id == rhs.id
             && lhs.title == rhs.title
-            && lhs.horizontalEdgeInset == rhs.horizontalEdgeInset
-&& lhs.resetGeneration == rhs.resetGeneration
-            && lhs.folders == rhs.folders
+            && lhs.horizontalEdgeInset == rhs.horizontalEdgeInset            && lhs.folders == rhs.folders
             && lhs.initialScrollIndex == rhs.initialScrollIndex
             && lhs.initialFocusCardKey == rhs.initialFocusCardKey
             && lhs.suppressFocusAnimations == rhs.suppressFocusAnimations
@@ -316,11 +293,11 @@ private struct TVCollectionFolderCard: View {
             if showsCaption {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(displayTitle)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: 25, weight: .semibold))
                         .foregroundStyle(.white.opacity(0.86))
                         .lineLimit(1)
                     Text(subtitle)
-                        .font(.system(size: 16, weight: .medium))
+                        .font(.system(size: 23, weight: .medium))
                         .foregroundStyle(.white.opacity(0.45))
                         .lineLimit(1)
                 }

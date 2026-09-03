@@ -3,9 +3,9 @@ import SwiftUI
 /// Same poster geometry as the See All catalog, Grid Home, and Search. Seven
 /// columns fit only because of `pageInset` — the old 80pt inset left room for six.
 enum LibraryGridMetrics {
-    static let posterWidth: CGFloat = 210
-    static let posterHeight: CGFloat = 315
-    static let posterGap: CGFloat = 28
+    static let posterWidth: CGFloat = 260
+    static let posterHeight: CGFloat = 390
+    static let posterGap: CGFloat = 40
     /// Leading/trailing inset for the whole screen. With the grid's own 12pt
     /// (which keeps a focused card's 1.06 scale from clipping) this is the 48pt
     /// gutter Grid Home uses, so posters line up across the two screens.
@@ -230,16 +230,13 @@ public struct LibraryView: View {
                     cloudContent
                 }
             }
-            .padding(.leading, NavigationRailMetrics.contentLeading)
-            .padding(.trailing, LibraryGridMetrics.pageInset)
+            .padding(.horizontal, LibraryGridMetrics.pageInset)
             .padding(.top, 56)
             .ignoresSafeArea(edges: .bottom)
         }
-        .onExitCommand {
-            if openCloudItem != nil {
-                closeCloudItem()
-            }
-        }
+        // Handle Menu only while a cloud item is open. A nil handler lets the
+        // press reach the tab host, which returns to Home.
+        .onExitCommand(perform: openCloudItem != nil ? closeCloudItem : nil)
         .onChange(of: focusedItemID) { _, newValue in
             if let newValue {
                 restoreArmTask?.cancel()

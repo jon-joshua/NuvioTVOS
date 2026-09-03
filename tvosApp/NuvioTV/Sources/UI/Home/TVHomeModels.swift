@@ -181,17 +181,33 @@ let TVHomeRowPrefetchThreshold = 12
 
 /// Shared Home vertical rhythm for catalog *and* collection folder rows.
 enum TVHomeLayout {
-    static let sectionSpacing: CGFloat = 28
+    static let sectionSpacing: CGFloat = 26
+    /// Extra room under a row so the next section title sits about 90pt below
+    /// the posters, as in the TV app, while the title-to-row gap stays at
+    /// `sectionSpacing`.
+    static let rowBottomSpacing: CGFloat = 64
     /// Keep the first catalog heading close to the hero description.
     static let heroBottomPadding: CGFloat = 20
-    static let rowsTopPadding: CGFloat = 4
+    /// Headroom under the hero so a focused top row lifts inside the list's
+    /// clip. The hero sits above the list, so the list must keep clipping.
+    static let rowsTopPadding: CGFloat = 30
     /// Extra scroll room so the last row can reach the same fixed anchor as
     /// earlier rows instead of being clamped to the viewport bottom.
     static let finalRowScrollRunway: CGFloat = 24
     /// Focus breathing room above/below cards inside a strip.
     static let stripVerticalPadding: CGFloat = 24
-    /// Section title line (~30pt) + VStack spacing under the title (~10pt) + slack.
-    static let rowTitleBlock: CGFloat = 46
+    /// Shelf title: the tvOS Headline style, as the TV app uses for its rows.
+    static let rowTitleFont: Font = .system(size: 38, weight: .semibold)
+    /// Title to strip. The strip already carries `stripVerticalPadding` above
+    /// its cards, so the visible gap is the sum: 30pt, which clears the lift.
+    static let rowTitleSpacing: CGFloat = 6
+    /// Section header line (~46pt) + `sectionSpacing` under it.
+    static let rowTitleBlock: CGFloat = 72
+    /// Two caption lines under a poster (25pt + 23pt) plus their spacing.
+    static let captionBlock: CGFloat = 64
+    /// Continue Watching lockup: the HIG five-column width at 16:9, like the
+    /// TV app's Up Next row.
+    static let landscapeRowCardSize = CGSize(width: 320, height: 180)
 
     /// Horizontal strip motion with no spring settling.
     static let scrollAnimation = NuvioMotion.scroll

@@ -13,8 +13,6 @@ enum NuvioMotion {
     static let expand: Animation = .spring(response: 0.30, dampingFraction: 1.0)
     /// A row pinning the focused card. Per press, so it must feel immediate.
     static let scroll: Animation = .easeOut(duration: 0.22)
-    /// The navigation rail opening or closing, and the page shifting with it.
-    static let drawer: Animation = .easeInOut(duration: 0.38)
     /// The whole page settling: rows resetting to the start, the list
     /// returning to the top.
     static let settle: Animation = .easeInOut(duration: 0.45)

@@ -45,8 +45,6 @@ struct TVMainTabView: View {
     @AppStorage(SettingsKey.profileName) private var settingsProfileName = "Nuvio User"
     @StateObject private var profileTabAvatar = ProfileTabAvatarRenderer()
     @State private var showingReauthSheet = false
-    @State private var railIsFocused = false
-    @State private var railFocusRequest = false
     /// Where the user came from when they opened Search; Menu returns there.
     @State private var tabBeforeSearch: TVTab = .home
 
@@ -63,115 +61,106 @@ struct TVMainTabView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            content
-                // Screens cross-fade: a new identity per tab so SwiftUI transitions
-                // rather than swapping in place.
-                .id(selectedTab)
-                .transition(.opacity)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // One focus section for the whole page: Up/Down stay inside it,
-                // only Left enters the rail, and Right from the rail lands on the
-                // nearest content item.
-                .focusSection()
-                // The rail is a pure overlay: content lays out at full width and
-                // slides right by the rail's width while it is open. An offset is a
-                // transform, not a layout pass, so nothing is re-laid out.
-                .offset(x: railIsFocused ? NavigationRailMetrics.openShift : 0)
-                // No slide when the destination is Search: it fades in instead.
-                .animation(selectedTab == .search ? nil : NuvioMotion.drawer, value: railIsFocused)
-                .environment(\.navigationRailShift, railIsFocused ? NavigationRailMetrics.openShift : 0)
-            if selectedTab != .search {
-                NavigationRail(
-                    selection: $selectedTab,
-                    isFocused: $railIsFocused,
-                    focusRequest: $railFocusRequest,
-                    title: { $0.title }
-                ) { tab in
-                    railIcon(for: tab)
+        sidebarTabs
+            .tabViewStyle(.sidebarAdaptable)
+            .background(Color.nuvioBackground(amoled: amoled, body: bodyColor).ignoresSafeArea())
+            .sheet(isPresented: $showingReauthSheet) {
+                ReauthSheet(auth: authManager) {
+                    syncManager.beginPostLoginSync()
                 }
-                    .zIndex(1)
-                    .transition(.move(edge: .leading))
             }
-        }
-        .animation(NuvioMotion.screen, value: selectedTab)
-        // Menu: from content, open the rail. On the rail it is left unhandled so
-        // tvOS exits the app: two presses from anywhere, like YouTube and Netflix.
-        .onExitCommand(perform: railIsFocused ? nil : handleMenu)
-        .background(Color.nuvioBackground(amoled: amoled, body: bodyColor).ignoresSafeArea())
-        .sheet(isPresented: $showingReauthSheet) {
-            ReauthSheet(auth: authManager) {
-                syncManager.beginPostLoginSync()
+            .onAppear {
+                AvatarCatalogStore.shared.loadIfNeeded()
+                profileTabAvatar.refresh(avatarId: displayedProfile?.avatarId)
+                if sessionNeedsReauthentication {
+                    showingReauthSheet = true
+                }
             }
-        }
-        .onAppear {
-            AvatarCatalogStore.shared.loadIfNeeded()
-            profileTabAvatar.refresh(avatarId: displayedProfile?.avatarId)
-            if sessionNeedsReauthentication {
-                showingReauthSheet = true
+            .onChange(of: sessionNeedsReauthentication) { _, needsReauth in
+                if needsReauth {
+                    showingReauthSheet = true
+                }
             }
-        }
-        .onChange(of: sessionNeedsReauthentication) { _, needsReauth in
-            if needsReauth {
-                showingReauthSheet = true
+            .onChange(of: displayedProfile?.avatarId) { _, newValue in
+                profileTabAvatar.refresh(avatarId: newValue)
             }
-        }
-        .onChange(of: displayedProfile?.avatarId) { _, newValue in
-            profileTabAvatar.refresh(avatarId: newValue)
-        }
-        .onChange(of: selectedTab) { old, tab in
-            if tab == .search, old != .search { tabBeforeSearch = old }
-            // The rail is removed while searching, so its focus report can't
-            // clear itself; do it here or the page stays slid and Menu exits.
-            if tab == .search { railIsFocused = false }
-            if tab == .profile {
-                onSwitchProfile()
+            .onChange(of: selectedTab) { old, tab in
+                // Menu from Search returns to wherever it was opened from.
+                if tab == .search, old != .search { tabBeforeSearch = old }
+                if tab == .profile {
+                    onSwitchProfile()
+                }
             }
-        }
-        // Re-attempt once the catalog finishes loading, since the first refresh
-        // can't resolve the avatar image before then.
-        .onReceive(AvatarCatalogStore.shared.$items) { _ in
-            profileTabAvatar.refresh(avatarId: displayedProfile?.avatarId)
-        }
+            // Re-attempt once the catalog finishes loading, since the first refresh
+            // can't resolve the avatar image before then.
+            .onReceive(AvatarCatalogStore.shared.$items) { _ in
+                profileTabAvatar.refresh(avatarId: displayedProfile?.avatarId)
+            }
     }
 
-    private func handleMenu() {
-        if selectedTab == .search {
-            selectedTab = tabBeforeSearch
-            return
-        }
-        railFocusRequest = true
-    }
-
-    /// The rail's icon per destination. Profile shows the signed-in avatar,
-    /// or a warning while re-authentication is needed.
-    @ViewBuilder
-    private func railIcon(for tab: TVTab) -> some View {
-        switch tab {
-        case .profile:
-            if sessionNeedsReauthentication {
-                Image(systemName: "person.crop.circle.badge.exclamationmark")
-            } else if let avatar = profileTabAvatar.image {
-                Image(uiImage: avatar).resizable().scaledToFit().clipShape(Circle())
-            } else {
-                Image(systemName: ProfileAvatarCatalog.symbolName(for: displayedProfile?.avatarId))
-            }
-        case .settings:
-            Image(systemName: sessionNeedsReauthentication ? "exclamationmark.circle" : TVTab.settings.symbol)
-        default:
-            Image(systemName: tab.symbol)
-        }
-    }
-
-    /// The screen for the selected destination.
-    @ViewBuilder
-    private var content: some View {
-        switch selectedTab {
-        case .profile:
+    /// The tvOS 18 sidebar: the system tab bar that collapses to icons and
+    /// expands with labels on focus. Visited tabs stay mounted, so switching
+    /// keeps each page's state.
+    private var sidebarTabs: some View {
+        TabView(selection: $selectedTab) {
             // Profile switching is an action, not a screen: selecting it fires
-            // `onSwitchProfile` (see the onChange above) over empty content.
-            Color.clear
-        case .home:
+            // `onSwitchProfile` (see the onChange above) over empty content. The
+            // label carries the profile name + avatar so the sidebar shows who is
+            // signed in instead of a generic "Profile" entry.
+            Tab(value: TVTab.profile) {
+                Color.clear
+            } label: {
+                Label {
+                    Text(profileTabTitle)
+                } icon: {
+                    if sessionNeedsReauthentication {
+                        Image(systemName: "person.crop.circle.badge.exclamationmark")
+                    } else if let avatar = profileTabAvatar.image {
+                        Image(uiImage: avatar).renderingMode(.original)
+                    } else {
+                        Image(systemName: ProfileAvatarCatalog.symbolName(for: displayedProfile?.avatarId))
+                    }
+                }
+            }
+
+            Tab(TVTab.home.title, systemImage: TVTab.home.symbol, value: TVTab.home) {
+                homePage
+            }
+
+            // The search role lets the sidebar integrate the system search field
+            // instead of floating the tab pill over it.
+            //
+            // Menu policy: Home is the app's top level. On Home the system
+            // handles Menu (sidebar, then the tvOS home screen); on every other
+            // tab Menu goes back one level to Home, or for Search to the tab it
+            // was opened from. Pages that own an overlay (Library's cloud item,
+            // Settings pickers) handle Menu themselves first and only fall
+            // through here when nothing is open.
+            Tab(value: TVTab.search, role: .search) {
+                searchTab
+                    .onExitCommand { selectedTab = tabBeforeSearch }
+            }
+
+            Tab(TVTab.library.title, systemImage: TVTab.library.symbol, value: TVTab.library) {
+                libraryPage
+                    .onExitCommand { selectedTab = .home }
+            }
+
+            Tab(value: TVTab.settings) {
+                settingsPage
+                    .onExitCommand { selectedTab = .home }
+            } label: {
+                Label(
+                    TVTab.settings.title,
+                    systemImage: sessionNeedsReauthentication ? "exclamationmark.circle" : TVTab.settings.symbol
+                )
+            }
+        }
+    }
+
+
+
+    private var homePage: some View {
         TVHomeView(
             store: homeStore,
             repository: CinemetaCatalogRepository(),
@@ -196,9 +185,9 @@ struct TVMainTabView: View {
             onRequestReauth: { showingReauthSheet = true }
         )
             .id(activeProfile?.id ?? "none")
-        case .search:
-            searchTab
-        case .library:
+    }
+
+    private var libraryPage: some View {
         LibraryView(
             viewModel: libraryViewModel,
             store: ProfileSettings.store(for: activeProfile?.id),
@@ -208,7 +197,9 @@ struct TVMainTabView: View {
             onPlayCloudFile: onPlayCloudFile
         )
             .id(activeProfile?.id ?? "none")
-        case .settings:
+    }
+
+    private var settingsPage: some View {
         SettingsView(
             activeProfile: displayedProfile,
             accountEmail: accountEmail,
@@ -227,7 +218,6 @@ struct TVMainTabView: View {
             },
             onSignOut: onSignOut
         )
-        }
     }
 
     /// The system-keyboard search over a full-width poster grid.

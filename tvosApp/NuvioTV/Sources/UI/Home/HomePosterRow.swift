@@ -13,28 +13,20 @@ struct TVLoadingCatalogRow: View {
 
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
 
-    private let cardWidth: CGFloat = 210
-    private let cardHeight: CGFloat = 315
-    private let cardSpacing: CGFloat = 28
+    private let cardWidth: CGFloat = 260
+    private let cardHeight: CGFloat = 390
+    private let cardSpacing: CGFloat = 40
 
     /// Matches `HomePosterRow.stripHeight`, so swapping a skeleton for the real
     /// row changes nothing about the rows below it.
     private var stripHeight: CGFloat {
-        cardHeight + (posterLabels ? 48 : 0) + TVHomeLayout.stripVerticalPadding * 2
+        cardHeight + (posterLabels ? TVHomeLayout.captionBlock : 0)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(title)
-                .font(.custom("Inter-Bold", size: 30))
-                .foregroundColor(.white)
-                .padding(.leading, TVLayout.rowLeading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            // Same definite-size window as `HomePosterRow`: a strip wider than
-            // the screen must be clipped here, never allowed to size the parent
-            // — that is what used to push the row titles and hero off-screen.
-            GeometryReader { geo in
+        // A definite-size window: a strip wider than the screen must be clipped
+        // here, never allowed to size the parent.
+        GeometryReader { geo in
                 HStack(alignment: .bottom, spacing: cardSpacing) {
                     // Enough to run past the right edge at either card size, so
                     // the strip reads as a row rather than a few loose tiles.
@@ -42,18 +34,17 @@ struct TVLoadingCatalogRow: View {
                         LoadingPosterCard(width: cardWidth, height: cardHeight)
                     }
                 }
-                .padding(.leading, TVLayout.rowLeading)
                 .frame(width: geo.size.width, height: geo.size.height, alignment: .leading)
                 .clipped()
             }
-            .frame(height: stripHeight)
-        }
+        .frame(height: stripHeight)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-/// One Home shelf: a title over a native horizontal row of `PosterCard`s that
-/// keeps the focused card pinned under the title (see `PinnedHorizontalRow`).
+/// One Home shelf: a title over a native horizontal row of `PosterCard`s. Focus
+/// moves freely across the visible cards; the row scrolls only when the focus
+/// engine has to reveal a card at an edge, as the Apple TV app does.
 struct HomePosterRow: View {
     let id: String
     let title: String
@@ -62,8 +53,6 @@ struct HomePosterRow: View {
     var progressByItemId: [String: ContinueWatchingItem] = [:]
     var watchedTitleKeys: Set<String> = []
     var initialScrollIndex: Int = 0
-    /// See TVHomeView.resetRowsForRail.
-    var resetGeneration: Int = 0
     var onScrollIndexChange: (Int) -> Void = { _ in }
     /// Composite key ("<sectionId>\u{1}<metaId>") of the card that should take
     /// focus on appear — the first card on a fresh load, or the card the user
@@ -74,7 +63,6 @@ struct HomePosterRow: View {
     /// Suppresses the one focus/layout animation caused by returning to Home
     /// from another tab. Normal left/right focus animation remains enabled.
     var suppressFocusAnimations: Bool = false
-    var isRowFocused: Bool = false
     let onInitialFocusRequested: () -> Void
     let onFocus: (NuvioMeta) -> Void
     let onBlur: (NuvioMeta) -> Void
@@ -85,52 +73,50 @@ struct HomePosterRow: View {
     var onStartContinueWatchingFromBeginning: ((ContinueWatchingItem) -> Void)? = nil
     var onRemoveFromContinueWatching: ((ContinueWatchingItem) -> Void)? = nil
 
-    /// Meta id of the card pinned to the gutter — the `ForEach` identity the
-    /// scroll view positions on. Nil until the row has laid out once.
-    @State private var leadingCardID: String?
+    /// Programmatic scroll target only: the rail reset and a card that must be
+    /// mounted before it can take focus. Nil the rest of the time; the focus
+    /// engine scrolls the row itself when focus reaches an edge, as tvOS does.
+    @State private var scrollTargetID: String?
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
     private let smoothFocus = true
 
     private var compactPosterWidth: CGFloat {
-        210
+        260
     }
 
     private var rowSpacing: CGFloat {
-        28
+        40
     }
 
     private var rowPrefix: String { "\(id)\u{1}" }
 
+    /// Continue Watching and Upcoming are landscape rows, like the TV app's
+    /// Up Next: the episode still with title and progress on it.
+    private var isLandscapeRow: Bool {
+        id == TVHomeSection.continueWatchingId || id == TVHomeSection.upcomingId
+    }
+
     private var cardFocusAnimations: Bool { smoothFocus && !suppressFocusAnimations }
 
-    /// Index of the pinned card. On the row's first frame this falls back to the
-    /// caller's cached index, so a remounted row never draws at card 0 first.
-    private var pinnedIndex: Int {
+    /// The card focus last rested on, from the host.s cache. Default focus for
+    /// re-entering the row, and the initial scroll target for a remounted row.
+    private var lastFocusedIndex: Int {
         guard !items.isEmpty else { return 0 }
-        if let leadingCardID, let index = items.firstIndex(where: { $0.id == leadingCardID }) {
-            return index
-        }
         return min(max(initialScrollIndex, 0), items.count - 1)
     }
 
-    /// The scroll view's position binding. Reads the cached index until the
-    /// first focus; after that `leadingCardID` owns it. One writer only: the
-    /// row. `.scrollPosition` writes back whatever sits at the anchor after a
-    /// scroll it performed itself (initial layout, the focus engine's reveal),
-    /// and that is not the focused card, so it must not steer `pinnedIndex`,
-    /// default focus or the disabled mask.
+    /// One writer only: the row. `.scrollPosition` writes back whatever sits at
+    /// the anchor after a scroll it performed itself, which is not something
+    /// the row needs to know.
     private var scrollTarget: Binding<String?> {
-        Binding(
-            get: { leadingCardID ?? (items.isEmpty ? nil : items[pinnedIndex].id) },
-            set: { _ in }
-        )
+        Binding(get: { scrollTargetID }, set: { _ in })
     }
 
 
-    // Card height (315) + vertical breathing room for the focus border/shadow.
+    // Card height plus vertical breathing room for the focus lift.
     private var stripHeight: CGFloat {
-        let imageHeight: CGFloat = 315
-        return imageHeight + (posterLabels ? 48 : 0) + TVHomeLayout.stripVerticalPadding * 2
+        if isLandscapeRow { return TVHomeLayout.landscapeRowCardSize.height }
+        return 390 + (posterLabels ? TVHomeLayout.captionBlock : 0)
     }
 
     private func isWatched(_ item: NuvioMeta) -> Bool? {
@@ -149,66 +135,52 @@ struct HomePosterRow: View {
 
     private var defaultFocusCardKey: String? {
         guard !items.isEmpty else { return nil }
-        return rowPrefix + items[pinnedIndex].id
+        return rowPrefix + items[lastFocusedIndex].id
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Keep the section title above the card strip (landscape art / focus
-            // scale can overflow the strip and would otherwise paint over it).
-            Text(title)
-                .font(.custom("Inter-Bold", size: 30))
-                .foregroundColor(.white)
-                .padding(.leading, TVLayout.rowLeading)
-                .offset(y: 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .zIndex(1)
-
-            cardStrip
-                .zIndex(0)
-        }
+        cardStrip
         .frame(maxWidth: .infinity, alignment: .leading)
         .focusSection()
         .defaultFocusIfAvailable(externalFocus, defaultFocusCardKey)
-        .onChange(of: resetGeneration) { _, _ in resetToStart() }
         // A card that must take focus has to exist first (see `pinIfInRow`).
         .onAppear {
+            // A remounted row starts where focus last was, not at card 0.
+            if scrollTargetID == nil, lastFocusedIndex > 0 {
+                scrollTargetID = items[lastFocusedIndex].id
+            }
             pinIfInRow(initialFocusCardKey)
         }
         .onChange(of: initialFocusCardKey) { _, key in pinIfInRow(key) }
     }
 
     private var cardStrip: some View {
-        // Resolve the pinned index once per row pass. `pinnedIndex` is a linear
-        // scan of `items`, and every card used to run it from `.disabled`.
-        let pinned = pinnedIndex
-        return PinnedHorizontalRow(
+        PinnedHorizontalRow(
             items: items,
             spacing: rowSpacing,
-            leadingMargin: TVLayout.rowLeading,
+            // The gutter is the list's safe area now; the scroll view insets to it.
+            leadingMargin: 0,
             // Cards run off the physical right edge, as the hero does.
             trailingBleed: horizontalEdgeInset,
             animation: cardFocusAnimations ? TVHomeLayout.scrollAnimation : nil,
             pinnedID: scrollTarget
         ) { index, item in
-            card(for: item, at: index, pinnedIndex: pinned)
-                // Room for the focus scale and shadow inside the scroll view's clip.
-                .padding(.vertical, TVHomeLayout.stripVerticalPadding)
+            card(for: item, at: index)
         }
         // The landscape card widens its cell and pushes trailing siblings.
         .animation(cardFocusAnimations ? TVHomeLayout.scrollAnimation : nil, value: landscapeFocusedId)
-        // No fixed height: the row is as tall as its padded cards, so no card is ever
-        // partially clipped and the outer list never nudges to reveal one.
+        // No fixed height and no clip: the lifted card draws outside the row.
     }
 
     @ViewBuilder
-    private func card(for item: NuvioMeta, at index: Int, pinnedIndex pinned: Int) -> some View {
+    private func card(for item: NuvioMeta, at index: Int) -> some View {
         let cardKey = rowPrefix + item.id
         let shouldRequestInitialFocus = cardKey == initialFocusCardKey
         let progressItem = progressByItemId[item.id]
         PosterCard(
             meta: item,
-            isLandscape: landscapeFocusedId == cardKey,
+            // Focus expansion off: neither the TV app nor Plex widens a poster on focus.
+            isLandscape: false,
             continueProgress: progressItem?.progress,
             continueRemainingText: progressItem?.remainingText,
             continueEpisodeText: progressItem?.episodeLabel,
@@ -233,42 +205,33 @@ struct HomePosterRow: View {
             onRemoveFromContinueWatching: ((id == TVHomeSection.continueWatchingId || id == TVHomeSection.upcomingId) && progressItem != nil) ? {
                 if let p = progressItem { onRemoveFromContinueWatching?(p) }
             } : nil,
-            isWatched: isWatched(item)
+            isWatched: isWatched(item),
+            fixedLandscapeSize: isLandscapeRow ? TVHomeLayout.landscapeRowCardSize : nil
         ) {
             onSelect(item)
         }
         // `PosterCard.==` ignores the closures built above, so an unchanged
         // card skips its body entirely when the row re-evaluates.
         .equatable()
-        .disabled(!isRowFocused && index != pinned)
     }
 
-    /// Pin the focused card, then let the host react (paging, backdrop, store).
+    /// Focus moved: remember where, and let the host react (paging, backdrop).
+    /// The row itself does not scroll; the focus engine reveals the card only
+    /// when it would leave the visible area.
     private func handleFocus(_ meta: NuvioMeta, at index: Int) {
-        if cardFocusAnimations {
-            withAnimation(TVHomeLayout.scrollAnimation) { leadingCardID = meta.id }
-        } else {
-            withTransaction(Transaction(animation: nil)) { leadingCardID = meta.id }
-        }
         onScrollIndexChange(index)
         onApproachEnd(meta)
         onFocus(meta)
     }
 
-    /// Rail opened: back to the first card (see TVHomeView.resetRowsForRail).
-    private func resetToStart() {
-        withAnimation(NuvioMotion.settle) { leadingCardID = items.first?.id }
-        onScrollIndexChange(0)
-    }
-
     /// `LazyHStack` only builds cards near the viewport, so a card that must take
-    /// focus (initial focus, overlay return) is pinned first — that mounts it,
-    /// and `PosterCard.onAppear` / the focus engine can then land on it.
+    /// focus (initial focus, overlay return) is scrolled to first; that mounts
+    /// it, and `PosterCard.onAppear` / the focus engine can then land on it.
     private func pinIfInRow(_ cardKey: String?) {
         guard let cardKey, cardKey.hasPrefix(rowPrefix) else { return }
         let itemID = String(cardKey.dropFirst(rowPrefix.count))
         guard items.contains(where: { $0.id == itemID }) else { return }
-        withTransaction(Transaction(animation: nil)) { leadingCardID = itemID }
+        withTransaction(Transaction(animation: nil)) { scrollTargetID = itemID }
     }
 }
 
@@ -285,11 +248,9 @@ extension HomePosterRow: Equatable {
             // `initialScrollIndex` is deliberately not compared: the host reads
             // it back from the store this row's own focus callback just wrote,
             // so it changes on every press and would defeat the gate. It is
-            // only consulted before the first focus, when `leadingCardID` is nil.
-            && lhs.resetGeneration == rhs.resetGeneration
+            // only consulted when the row mounts and when focus re-enters it.
             && lhs.initialFocusCardKey == rhs.initialFocusCardKey
             && lhs.landscapeFocusedId == rhs.landscapeFocusedId
             && lhs.suppressFocusAnimations == rhs.suppressFocusAnimations
-            && lhs.isRowFocused == rhs.isRowFocused
     }
 }

@@ -4,9 +4,9 @@ import UIKit
 /// Same poster geometry as the See All catalog and Grid Home. Column count is
 /// whatever fits: the system search UI decides how much width results get.
 private enum SearchGridMetrics {
-    static let posterWidth: CGFloat = 210
-    static let posterHeight: CGFloat = 315
-    static let posterGap: CGFloat = 28
+    static let posterWidth: CGFloat = 260
+    static let posterHeight: CGFloat = 390
+    static let posterGap: CGFloat = 40
     static let gridContentInset: CGFloat = 12
 }
 

@@ -124,7 +124,6 @@
 		C0D310B1000000000000B1B1 /* NuvioTV/Sources/UI/Search/SearchDiscoverGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300B1000000000000B1B1 /* NuvioTV/Sources/UI/Search/SearchDiscoverGrid.swift */; };
 		C0D310B2000000000000B2B2 /* NuvioTV/Sources/UI/Navigation/TVTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300B2000000000000B2B2 /* NuvioTV/Sources/UI/Navigation/TVTab.swift */; };
 		C0D310B3000000000000B3B3 /* NuvioTV/Sources/UI/Navigation/TVMainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300B3000000000000B3B3 /* NuvioTV/Sources/UI/Navigation/TVMainTabView.swift */; };
-		C0D310B4000000000000B4B4 /* NuvioTV/Sources/UI/Navigation/NavigationRail.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300B4000000000000B4B4 /* NuvioTV/Sources/UI/Navigation/NavigationRail.swift */; };
 		C0D310C1000000000000C1C1 /* NuvioTV/Sources/UI/Navigation/AppNavigation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300C1000000000000C1C1 /* NuvioTV/Sources/UI/Navigation/AppNavigation.swift */; };
 		C0D310B7000000000000B7B7 /* NuvioTV/Sources/UI/Theme/NuvioMotion.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300B7000000000000B7B7 /* NuvioTV/Sources/UI/Theme/NuvioMotion.swift */; };
 		C0D310B5000000000000B5B5 /* NuvioTV/Sources/UI/Home/HomePosterRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300B5000000000000B5B5 /* NuvioTV/Sources/UI/Home/HomePosterRow.swift */; };
@@ -146,7 +145,6 @@
 		C0D310FB00000000000000FB /* NuvioTV/Sources/Core/Sync/ContinueWatchingBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300FB00000000000000FB /* NuvioTV/Sources/Core/Sync/ContinueWatchingBuilder.swift */; };
 		C0D310FC00000000000000FC /* NuvioTV/Sources/Core/Sync/ContinueWatchingTestData.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300FC00000000000000FC /* NuvioTV/Sources/Core/Sync/ContinueWatchingTestData.swift */; };
 		C0D310FD00000000000000FD /* NuvioTV/Sources/Core/Sync/ICloudSettingsSyncManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0D300FD00000000000000FD /* NuvioTV/Sources/Core/Sync/ICloudSettingsSyncManager.swift */; };
-		F0A100020000000000000001 /* inter_variable.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F0A100010000000000000001 /* inter_variable.ttf */; };
 		PP0110010000000000000001 /* NuvioTV/Sources/Models/PostPlayRecommendationModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP0100010000000000000001 /* NuvioTV/Sources/Models/PostPlayRecommendationModels.swift */; };
 		PP0110020000000000000002 /* NuvioTV/Sources/Core/Player/PostPlayRecommendationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP0100020000000000000002 /* NuvioTV/Sources/Core/Player/PostPlayRecommendationController.swift */; };
 		PP0110030000000000000003 /* NuvioTV/Sources/UI/Player/PostPlayRecommendationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = PP0100030000000000000003 /* NuvioTV/Sources/UI/Player/PostPlayRecommendationOverlay.swift */; };
@@ -318,7 +316,6 @@
 		C0D300B1000000000000B1B1 /* NuvioTV/Sources/UI/Search/SearchDiscoverGrid.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Search/SearchDiscoverGrid.swift; sourceTree = "<group>"; };
 		C0D300B2000000000000B2B2 /* NuvioTV/Sources/UI/Navigation/TVTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Navigation/TVTab.swift; sourceTree = "<group>"; };
 		C0D300B3000000000000B3B3 /* NuvioTV/Sources/UI/Navigation/TVMainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Navigation/TVMainTabView.swift; sourceTree = "<group>"; };
-		C0D300B4000000000000B4B4 /* NuvioTV/Sources/UI/Navigation/NavigationRail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Navigation/NavigationRail.swift; sourceTree = "<group>"; };
 		C0D300C1000000000000C1C1 /* NuvioTV/Sources/UI/Navigation/AppNavigation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Navigation/AppNavigation.swift; sourceTree = "<group>"; };
 		C0D300B7000000000000B7B7 /* NuvioTV/Sources/UI/Theme/NuvioMotion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Theme/NuvioMotion.swift; sourceTree = "<group>"; };
 		C0D300B5000000000000B5B5 /* NuvioTV/Sources/UI/Home/HomePosterRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/UI/Home/HomePosterRow.swift; sourceTree = "<group>"; };
@@ -340,7 +337,6 @@
 		C0D300FB00000000000000FB /* NuvioTV/Sources/Core/Sync/ContinueWatchingBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/Core/Sync/ContinueWatchingBuilder.swift; sourceTree = "<group>"; };
 		C0D300FC00000000000000FC /* NuvioTV/Sources/Core/Sync/ContinueWatchingTestData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/Core/Sync/ContinueWatchingTestData.swift; sourceTree = "<group>"; };
 		C0D300FD00000000000000FD /* NuvioTV/Sources/Core/Sync/ICloudSettingsSyncManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NuvioTV/Sources/Core/Sync/ICloudSettingsSyncManager.swift; sourceTree = "<group>"; };
-		F0A100010000000000000001 /* inter_variable.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; name = inter_variable.ttf; path = NuvioTV/Fonts/inter_variable.ttf; sourceTree = "<group>"; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = NuvioTV/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* NuvioTV-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "NuvioTV-Bridging-Header.h"; path = "NuvioTV/NuvioTV-Bridging-Header.h"; sourceTree = "<group>"; };
 		FCFBFA7530490E2300B00B11 /* NuvioTVDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = NuvioTVDebug.entitlements; path = NuvioTV/NuvioTVDebug.entitlements; sourceTree = "<group>"; };
@@ -391,7 +387,6 @@
 				A1L100030000000000000003 /* NuvioTV/Resources/AppLanguageCatalog.json */,
 				C0D320000000000000000000 /* Sources */,
 				F11748442D0722820044C1D9 /* NuvioTV-Bridging-Header.h */,
-				F0A100000000000000000001 /* Fonts */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
@@ -568,7 +563,6 @@
 				C0D300150000000000000015 /* NuvioTV/Sources/UI/Profile/ProfilePinView.swift */,
 				C0D300160000000000000016 /* NuvioTV/Sources/UI/Profile/UserProfileView.swift */,
 				C0D300170000000000000017 /* NuvioTV/Sources/UI/Search/SearchView.swift */,
-				C0D300B4000000000000B4B4 /* NuvioTV/Sources/UI/Navigation/NavigationRail.swift */,
 				C0D300C1000000000000C1C1 /* NuvioTV/Sources/UI/Navigation/AppNavigation.swift */,
 				C0D300B7000000000000B7B7 /* NuvioTV/Sources/UI/Theme/NuvioMotion.swift */,
 				C0D300B6000000000000B6B6 /* NuvioTV/Sources/UI/Components/PinnedHorizontalRow.swift */,
@@ -604,14 +598,6 @@
 				C0D300200000000000000020 /* NuvioTV/Sources/ViewModels/SearchViewModel.swift */,
 			);
 			name = ViewModels;
-			sourceTree = "<group>";
-		};
-		F0A100000000000000000001 /* Fonts */ = {
-			isa = PBXGroup;
-			children = (
-				F0A100010000000000000001 /* inter_variable.ttf */,
-			);
-			name = Fonts;
 			sourceTree = "<group>";
 		};
 		FCFBFA743048F9A100B00B11 /* Recovered References */ = {
@@ -779,7 +765,6 @@
 			files = (
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				A1L100040000000000000004 /* NuvioTV/Resources/AppLanguageCatalog.json in Resources */,
-				F0A100020000000000000001 /* inter_variable.ttf in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -882,7 +867,6 @@
 				C0D310150000000000000015 /* NuvioTV/Sources/UI/Profile/ProfilePinView.swift in Sources */,
 				C0D310160000000000000016 /* NuvioTV/Sources/UI/Profile/UserProfileView.swift in Sources */,
 				C0D310170000000000000017 /* NuvioTV/Sources/UI/Search/SearchView.swift in Sources */,
-				C0D310B4000000000000B4B4 /* NuvioTV/Sources/UI/Navigation/NavigationRail.swift in Sources */,
 				C0D310C1000000000000C1C1 /* NuvioTV/Sources/UI/Navigation/AppNavigation.swift in Sources */,
 				C0D310B7000000000000B7B7 /* NuvioTV/Sources/UI/Theme/NuvioMotion.swift in Sources */,
 				C0D310B6000000000000B6B6 /* NuvioTV/Sources/UI/Components/PinnedHorizontalRow.swift in Sources */,

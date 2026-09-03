@@ -115,8 +115,8 @@ struct TVHomeView: View {
     @State private var landscapeFocusedId: String?
     @State private var focusWork = TVHomeFocusWork()
     @State private var rowScrollStore = TVHomeRowScrollStore()
-    /// Bumped when the rail opens; rows watch it and snap back to their first card.
-    @State private var rowResetGeneration = 0
+    /// Height of the rows list, for `rowAnchor`.
+    @State private var listViewportHeight: CGFloat = 0
     /// An account sync landed while a pushed screen covered Home; the reload
     /// runs once Home is back and focus has settled.
     @State private var syncReloadDeferred = false
@@ -176,7 +176,6 @@ struct TVHomeView: View {
             return result
         }
     }
-    @Environment(\.navigationRailShift) private var railShift
     @State private var focusedRowIndex = 0
     /// The Grid hero owns its own focus state, so `focusedCardID` goes nil while
     /// it is focused. Home still holds focus then, and arming the focus restore
@@ -503,10 +502,6 @@ struct TVHomeView: View {
             .equatable()
             .ignoresSafeArea()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Hold the backdrop still while the rail slides the page (see
-            // navigationRailShift); only the content should move.
-            .offset(x: -railShift)
-            .animation(NuvioMotion.drawer, value: railShift)
             
             // 2. Gradients overlay for backdrop blending and readability.
             // Uses the selected body background color (not pure black) so the
@@ -528,8 +523,6 @@ struct TVHomeView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
             .ignoresSafeArea()
-            .offset(x: -railShift)
-            .animation(NuvioMotion.drawer, value: railShift)
 
             GeometryReader { proxy in
                 VStack(spacing: 0) {
@@ -548,9 +541,6 @@ struct TVHomeView: View {
                 }
             }
             .ignoresSafeArea()
-            .offset(x: -railShift)
-            .animation(NuvioMotion.drawer, value: railShift)
-            .animation(NuvioMotion.drawer, value: railShift)
 
             // 3. Scrollable catalog rows overlay, with pinned Hero at the top
             VStack(alignment: .leading, spacing: 0) {
@@ -621,149 +611,10 @@ struct TVHomeView: View {
                                         }
 
                                         ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
-                                        if section.isLoadingPlaceholder {
-                                            TVLoadingCatalogRow(title: section.title)
-                                                .frame(
-                                                    height: estimatedHeight(for: section),
-                                                    alignment: .topLeading
-                                                )
-                                        } else if !section.collectionFolders.isEmpty {
-                                            TVCollectionFolderRow(
-                                                id: section.id,
-                                                title: section.title,
-                                                horizontalEdgeInset: horizontalEdgeInset,
-                                                folders: section.collectionFolders,
-                                                initialScrollIndex: rowScrollStore.index(for: section.id),
-resetGeneration: rowResetGeneration,
-                                                onScrollIndexChange: { newIndex in
-                                                    rowScrollStore.setIndex(newIndex, for: section.id)
-                                                },
-                                                initialFocusCardKey: initialFocusCardKey,
-                                                externalFocus: $focusedCardID,
-                                                suppressFocusAnimations: suppressReturnFocusAnimations
-                                                    && focusedRowIndex == index,
-                                                isRowFocused: focusedRowIndex == index,
-                                                onInitialFocusRequested: {
-                                                    didRequestInitialCardFocus = true
-                                                },
-                                                onFocus: { folder in
-                                                    let cardKey = "\(section.id)\u{1}\(folder.id)"
-                                                    let changedRow = focusedRowIndex != index
-                                                    // Only a row change needs a vertical scroll. A
-                                                    // horizontal move within the row used to issue a
-                                                    // no-animation scrollTo as well, which forced the
-                                                    // outer ScrollView to re-resolve on every press.
-                                                    if changedRow {
-                                                        focusedRowIndex = index
-                                                        withAnimation(TVHomeLayout.verticalScrollAnimation) {
-                                                            verticalScrollProxy.scrollTo(section.id, anchor: .top)
-                                                        }
-                                                    }
-                                                    focusedCardID = cardKey
-                                                    settleFolderFocus(folder, in: section.id)
-                                                },
-                                                onSelect: { folder in
-                                                    onOpenCollectionFolder(folder, section.title)
-                                                }
-                                            )
-                                            .equatable()
-                                            .id(section.id)
-                                         } else {
-                                            HomePosterRow(
-                                                id: section.id,
-                                                title: section.title,
-                                                horizontalEdgeInset: horizontalEdgeInset,
-                                                items: section.items,
-                                                progressByItemId: (section.id == TVHomeSection.continueWatchingId || section.id == TVHomeSection.upcomingId)
-                                                    ? continueWatchingByMetaId : [:],
-                                                watchedTitleKeys: watchedTitleKeys,
-                                                initialScrollIndex: rowScrollStore.index(for: section.id),
-resetGeneration: rowResetGeneration,
-                                                onScrollIndexChange: { newIndex in
-                                                    rowScrollStore.setIndex(newIndex, for: section.id)
-                                                },
-                                                initialFocusCardKey: initialFocusCardKey,
-                                                landscapeFocusedId: landscapeFocusedId(for: section.id),
-                                                externalFocus: $focusedCardID,
-                                                suppressFocusAnimations: suppressReturnFocusAnimations
-                                                    && focusedRowIndex == index,
-                                                isRowFocused: focusedRowIndex == index,
-                                                onInitialFocusRequested: {
-                                                    didRequestInitialCardFocus = true
-                                                },
-                                                onFocus: { meta in
-                                                    let focusStarted = TVHomeDebugTrace.now()
-                                                    let cardKey = "\(section.id)\u{1}\(meta.id)"
-                                                    let changedRow = focusedRowIndex != index
-                                                    TVHomeDebugTrace.log(
-                                                        "home.focus.begin section=\(section.id) meta=\(meta.id) "
-                                                            + "changedRow=\(changedRow) fromRow=\(focusedRowIndex) toRow=\(index)"
-                                                    )
-                                                    // Only a row change needs a vertical scroll; see the
-                                                    // folder-row handler above for why the horizontal
-                                                    // case no longer calls scrollTo.
-                                                    if changedRow {
-                                                        focusedRowIndex = index
-                                                        TVHomeDebugTrace.log(
-                                                            "home.scrollTo section=\(section.id) anchor=top"
-                                                        )
-                                                        withAnimation(TVHomeLayout.verticalScrollAnimation) {
-                                                            verticalScrollProxy.scrollTo(section.id, anchor: .top)
-                                                        }
-                                                    }
-                                                    focusedCardID = cardKey
-                                                    settleCatalogFocus(on: meta, in: section.id)
-                                                    scheduleLandscapeFocus(cardKey: cardKey)
-                                                    TVHomeDebugTrace.log(
-                                                        "home.focus.end section=\(section.id) meta=\(meta.id) "
-                                                            + "ms=\(TVHomeDebugTrace.elapsedMilliseconds(since: focusStarted))"
-                                                    )
-                                                },
-                                                onBlur: { meta in
-                                                    clearLandscapeFocus(cardKey: "\(section.id)\u{1}\(meta.id)")
-                                                },
-                                                onApproachEnd: { meta in
-                                                    loadMoreSectionIfNeeded(
-                                                        sectionId: section.id, currentItem: meta)
-                                                },
-                                                onSelect: { meta in
-                                                    if (section.id == TVHomeSection.continueWatchingId || section.id == TVHomeSection.upcomingId),
-                                                        let item = continueWatchingByMetaId[meta.id]
-                                                    {
-                                                        if item.isUpNextEntry && !item.hasAired && !item.isAiringToday {
-                                                            let cardKey = "\(section.id)\u{1}\(meta.id)"
-                                                            navigateToDetailsFromHome(
-                                                                id: meta.id,
-                                                                type: meta.type,
-                                                                restoreCardID: cardKey
-                                                            )
-                                                        } else {
-                                                            onResumePlayback(item)
-                                                        }
-                                                    } else {
-                                                        let cardKey = "\(section.id)\u{1}\(meta.id)"
-                                                        navigateToDetailsFromHome(
-                                                            id: meta.id,
-                                                            type: meta.type,
-                                                            restoreCardID: cardKey
-                                                        )
-                                                    }
-                                                },
-                                                onOpenDetails: { meta in
-                                                    let cardKey = "\(section.id)\u{1}\(meta.id)"
-                                                    navigateToDetailsFromHome(
-                                                        id: meta.id,
-                                                        type: meta.type,
-                                                        restoreCardID: cardKey
-                                                    )
-                                                },
-                                                onPlayContinueWatchingManually: onPlayContinueWatchingManually,
-                                                onStartContinueWatchingFromBeginning: onStartContinueWatchingFromBeginning,
-                                                onRemoveFromContinueWatching: onRemoveFromContinueWatching
-                                            )
-                                            .equatable()
-                                            .id(section.id)
-                                        }  // end catalog vs collection branch
+                                        Section(section.title) {
+                                        homeRow(for: section, at: index, edgeInset: horizontalEdgeInset, proxy: verticalScrollProxy)
+                                            .padding(.bottom, TVHomeLayout.rowBottomSpacing)
+                                        }
                                         }
                                     }
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -792,9 +643,11 @@ resetGeneration: rowResetGeneration,
                                         .frame(height: proxy.size.height + TVHomeLayout.finalRowScrollRunway)
                                         .accessibilityHidden(true)
                                 }
-                                .onChange(of: railShift) { _, shift in
-                                    if shift > 0 { resetRowsForRail(using: verticalScrollProxy) }
-                                }
+                                // The content gutter as safe area: section headers inset to it
+                                // and the row scroll views extend under it, as in the TV app.
+                                .safeAreaPadding(.leading, TVLayout.rowLeading)
+                                .onAppear { listViewportHeight = proxy.size.height }
+                                .onChange(of: proxy.size.height) { _, height in listViewportHeight = height }
                             }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -822,15 +675,6 @@ resetGeneration: rowResetGeneration,
                     .allowsHitTesting(false)
             }
         }
-    }
-
-    /// Opening the rail resets Home, Plex-style: every row back to its first
-    /// card and the list back to the top, animated, so the left edge is clean.
-    private func resetRowsForRail(using proxy: ScrollViewProxy) {
-        rowResetGeneration += 1
-        rowScrollStore.removeAll()
-        guard let first = visibleSections.first(where: \.hasContent)?.id else { return }
-        withAnimation(NuvioMotion.settle) { proxy.scrollTo(first, anchor: .top) }
     }
 
     /// The meta id inside a Continue Watching or Upcoming card key, or nil for any other row.
@@ -957,29 +801,187 @@ resetGeneration: rowResetGeneration,
             var transaction = Transaction()
             transaction.animation = nil
             withTransaction(transaction) {
-                proxy.scrollTo(location.sectionID, anchor: .top)
+                proxy.scrollTo(location.sectionID, anchor: rowAnchor)
             }
         }
     }
 
-    /// Catalog poster row estimate (title + strip + labels padding).
-    private var estimatedCatalogRowHeight: CGFloat {
-        let imageHeight: CGFloat = 315
-        let stripHeight = imageHeight + (posterLabels ? 48 : 0) + TVHomeLayout.stripVerticalPadding * 2
-        // One 30pt Inter title line plus the row's 10pt internal spacing.
-        return stripHeight + TVHomeLayout.rowTitleBlock
+    /// Scroll anchor that lands a row just under the top edge with room for its
+    /// section header above it. The header is the system's, so the row carries
+    /// the id and the anchor leaves the header block visible.
+    private var rowAnchor: UnitPoint {
+        UnitPoint(x: 0, y: TVHomeLayout.rowTitleBlock / max(listViewportHeight, 1))
     }
 
+    /// Catalog poster row estimate (title + strip + labels padding).
+    /// One Home section's row. A separate function so the section list stays
+    /// small enough for the type checker.
+    @ViewBuilder
+    private func homeRow(for section: TVHomeSection, at index: Int, edgeInset horizontalEdgeInset: CGFloat, proxy verticalScrollProxy: ScrollViewProxy) -> some View {
+                                        if section.isLoadingPlaceholder {
+                                            TVLoadingCatalogRow(title: section.title)
+                                                // The title is the section header now.
+                                                .frame(
+                                                    height: estimatedHeight(for: section) - TVHomeLayout.rowTitleBlock,
+                                                    alignment: .topLeading
+                                                )
+                                                .id(section.id)
+                                        } else if !section.collectionFolders.isEmpty {
+                                            TVCollectionFolderRow(
+                                                id: section.id,
+                                                title: section.title,
+                                                horizontalEdgeInset: horizontalEdgeInset,
+                                                folders: section.collectionFolders,
+                                                initialScrollIndex: rowScrollStore.index(for: section.id),
+                                                onScrollIndexChange: { newIndex in
+                                                    rowScrollStore.setIndex(newIndex, for: section.id)
+                                                },
+                                                initialFocusCardKey: initialFocusCardKey,
+                                                externalFocus: $focusedCardID,
+                                                suppressFocusAnimations: suppressReturnFocusAnimations
+                                                    && focusedRowIndex == index,
+                                                isRowFocused: focusedRowIndex == index,
+                                                onInitialFocusRequested: {
+                                                    didRequestInitialCardFocus = true
+                                                },
+                                                onFocus: { folder in
+                                                    let cardKey = "\(section.id)\u{1}\(folder.id)"
+                                                    let changedRow = focusedRowIndex != index
+                                                    // Only a row change needs a vertical scroll. A
+                                                    // horizontal move within the row used to issue a
+                                                    // no-animation scrollTo as well, which forced the
+                                                    // outer ScrollView to re-resolve on every press.
+                                                    if changedRow {
+                                                        focusedRowIndex = index
+                                                        withAnimation(TVHomeLayout.verticalScrollAnimation) {
+                                                            verticalScrollProxy.scrollTo(section.id, anchor: rowAnchor)
+                                                        }
+                                                    }
+                                                    focusedCardID = cardKey
+                                                    settleFolderFocus(folder, in: section.id)
+                                                },
+                                                onSelect: { folder in
+                                                    onOpenCollectionFolder(folder, section.title)
+                                                }
+                                            )
+                                            .equatable()
+                                            .id(section.id)
+                                         } else {
+                                            HomePosterRow(
+                                                id: section.id,
+                                                title: section.title,
+                                                horizontalEdgeInset: horizontalEdgeInset,
+                                                items: section.items,
+                                                progressByItemId: (section.id == TVHomeSection.continueWatchingId || section.id == TVHomeSection.upcomingId)
+                                                    ? continueWatchingByMetaId : [:],
+                                                watchedTitleKeys: watchedTitleKeys,
+                                                initialScrollIndex: rowScrollStore.index(for: section.id),
+                                                onScrollIndexChange: { newIndex in
+                                                    rowScrollStore.setIndex(newIndex, for: section.id)
+                                                },
+                                                initialFocusCardKey: initialFocusCardKey,
+                                                landscapeFocusedId: landscapeFocusedId(for: section.id),
+                                                externalFocus: $focusedCardID,
+                                                suppressFocusAnimations: suppressReturnFocusAnimations
+                                                    && focusedRowIndex == index,
+                                                onInitialFocusRequested: {
+                                                    didRequestInitialCardFocus = true
+                                                },
+                                                onFocus: { meta in
+                                                    let focusStarted = TVHomeDebugTrace.now()
+                                                    let cardKey = "\(section.id)\u{1}\(meta.id)"
+                                                    let changedRow = focusedRowIndex != index
+                                                    TVHomeDebugTrace.log(
+                                                        "home.focus.begin section=\(section.id) meta=\(meta.id) "
+                                                            + "changedRow=\(changedRow) fromRow=\(focusedRowIndex) toRow=\(index)"
+                                                    )
+                                                    // Only a row change needs a vertical scroll; see the
+                                                    // folder-row handler above for why the horizontal
+                                                    // case no longer calls scrollTo.
+                                                    if changedRow {
+                                                        focusedRowIndex = index
+                                                        TVHomeDebugTrace.log(
+                                                            "home.scrollTo section=\(section.id) anchor=top"
+                                                        )
+                                                        withAnimation(TVHomeLayout.verticalScrollAnimation) {
+                                                            verticalScrollProxy.scrollTo(section.id, anchor: rowAnchor)
+                                                        }
+                                                    }
+                                                    focusedCardID = cardKey
+                                                    settleCatalogFocus(on: meta, in: section.id)
+                                                    scheduleLandscapeFocus(cardKey: cardKey)
+                                                    TVHomeDebugTrace.log(
+                                                        "home.focus.end section=\(section.id) meta=\(meta.id) "
+                                                            + "ms=\(TVHomeDebugTrace.elapsedMilliseconds(since: focusStarted))"
+                                                    )
+                                                },
+                                                onBlur: { meta in
+                                                    clearLandscapeFocus(cardKey: "\(section.id)\u{1}\(meta.id)")
+                                                },
+                                                onApproachEnd: { meta in
+                                                    loadMoreSectionIfNeeded(
+                                                        sectionId: section.id, currentItem: meta)
+                                                },
+                                                onSelect: { meta in
+                                                    if (section.id == TVHomeSection.continueWatchingId || section.id == TVHomeSection.upcomingId),
+                                                        let item = continueWatchingByMetaId[meta.id]
+                                                    {
+                                                        if item.isUpNextEntry && !item.hasAired && !item.isAiringToday {
+                                                            let cardKey = "\(section.id)\u{1}\(meta.id)"
+                                                            navigateToDetailsFromHome(
+                                                                id: meta.id,
+                                                                type: meta.type,
+                                                                restoreCardID: cardKey
+                                                            )
+                                                        } else {
+                                                            onResumePlayback(item)
+                                                        }
+                                                    } else {
+                                                        let cardKey = "\(section.id)\u{1}\(meta.id)"
+                                                        navigateToDetailsFromHome(
+                                                            id: meta.id,
+                                                            type: meta.type,
+                                                            restoreCardID: cardKey
+                                                        )
+                                                    }
+                                                },
+                                                onOpenDetails: { meta in
+                                                    let cardKey = "\(section.id)\u{1}\(meta.id)"
+                                                    navigateToDetailsFromHome(
+                                                        id: meta.id,
+                                                        type: meta.type,
+                                                        restoreCardID: cardKey
+                                                    )
+                                                },
+                                                onPlayContinueWatchingManually: onPlayContinueWatchingManually,
+                                                onStartContinueWatchingFromBeginning: onStartContinueWatchingFromBeginning,
+                                                onRemoveFromContinueWatching: onRemoveFromContinueWatching
+                                            )
+                                            .equatable()
+                                            .id(section.id)
+                                        }  // end catalog vs collection branch
+    }
+
+    private var estimatedCatalogRowHeight: CGFloat {
+        let imageHeight: CGFloat = 390
+        let stripHeight = imageHeight + (posterLabels ? TVHomeLayout.captionBlock : 0)
+        // The row title line plus the spacing under it.
+        return stripHeight + TVHomeLayout.rowTitleBlock + TVHomeLayout.rowBottomSpacing
+    }
+	
     /// Collection folder row estimate. Curated templates may hide every folder
     /// label even when poster labels are enabled globally.
     private func estimatedCollectionRowHeight(for section: TVHomeSection) -> CGFloat {
-        let imageHeight: CGFloat = 315
+        let imageHeight: CGFloat = 390
         let showsLabels = posterLabels && section.collectionFolders.contains { !$0.hideTitle }
-        let stripHeight = imageHeight + (showsLabels ? 48 : 0) + TVHomeLayout.stripVerticalPadding * 2
-        return stripHeight + TVHomeLayout.rowTitleBlock
+        let stripHeight = imageHeight + (showsLabels ? TVHomeLayout.captionBlock : 0) + TVHomeLayout.stripVerticalPadding * 2
+        return stripHeight + TVHomeLayout.rowTitleBlock + TVHomeLayout.rowBottomSpacing
     }
 
     private func estimatedHeight(for section: TVHomeSection) -> CGFloat {
+        if section.id == TVHomeSection.continueWatchingId || section.id == TVHomeSection.upcomingId {
+            return TVHomeLayout.landscapeRowCardSize.height + TVHomeLayout.rowTitleBlock
+        }
         return section.collectionFolders.isEmpty
             ? estimatedCatalogRowHeight
             : estimatedCollectionRowHeight(for: section)

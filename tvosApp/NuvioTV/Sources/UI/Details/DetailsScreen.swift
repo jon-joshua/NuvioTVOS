@@ -3098,18 +3098,18 @@ private struct TvDetailsRelatedRow: View {
     @State private var scrollIndex = 0
     private let smoothFocus = true
 
-    private var cardWidth: CGFloat { 210 }
-    private var cardHeight: CGFloat { 315 }
-    private var spacing: CGFloat { 28 }
+    private var cardWidth: CGFloat { 260 }
+    private var cardHeight: CGFloat { 390 }
+    private var spacing: CGFloat { 40 }
     private var step: CGFloat { cardWidth + spacing }
     private var stripHeight: CGFloat {
-        cardHeight + 36 + TvDetailsHorizontalStrip.verticalPadding * 2
+        cardHeight + 40 + TvDetailsHorizontalStrip.verticalPadding * 2
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text(title)
-                .font(.system(size: 34, weight: .semibold))
+                .font(.system(size: 38, weight: .semibold))
                 .foregroundColor(.white.opacity(0.9))
 
             HStack(alignment: .bottom, spacing: spacing) {
@@ -3160,7 +3160,7 @@ private struct TvDetailsProductionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text(title)
-                .font(.system(size: 34, weight: .semibold))
+                .font(.system(size: 38, weight: .semibold))
                 .foregroundColor(.white.opacity(0.9))
 
             ScrollView(.horizontal, showsIndicators: false) {
@@ -3264,7 +3264,7 @@ private struct TvDetailsCommentsRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 22) {
             Text(L10n.string("details_top_comments", fallback: "Top Comments"))
-                .font(.system(size: 34, weight: .semibold))
+                .font(.system(size: 38, weight: .semibold))
                 .foregroundColor(.white.opacity(0.9))
 
             HStack(spacing: 22) {

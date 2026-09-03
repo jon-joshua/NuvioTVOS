@@ -116,11 +116,19 @@ struct PosterCard: View {
     var onStartFromBeginning: (() -> Void)? = nil
     var onRemoveFromContinueWatching: (() -> Void)? = nil
     var isWatched: Bool? = nil
+    /// A row that is landscape all the time (Continue Watching, like the TV
+    /// app's Up Next). The card draws its landscape art at this size from the
+    /// start and never expands on focus.
+    var fixedLandscapeSize: CGSize? = nil
     let onClick: () -> Void
 
-    private static let portraitWidth: CGFloat = 210
-    private static let landscapeWidth: CGFloat = 560
-    private static let height: CGFloat = 315
+    private static let portraitSize = CGSize(width: 260, height: 390)
+    private static let expandedSize = CGSize(width: 693, height: 390)
+
+    private var landscapeSize: CGSize { fixedLandscapeSize ?? Self.expandedSize }
+    private var isAlwaysLandscape: Bool { fixedLandscapeSize != nil }
+    /// The permanent row is smaller, so its overlay type steps down a size.
+    private var compactOverlay: Bool { landscapeSize.width < 500 }
 
     /// Mirrors the tile's focus so the trailer and preload tasks can key on it.
     @State private var isFocused = false
@@ -140,9 +148,9 @@ struct PosterCard: View {
             meta: meta,
             artworkURL: effectiveLandscape ? landscapeArtworkURL : meta.posterUrl,
             preloadURL: landscapePreloadURL,
-            preloadMaximumWidth: Self.landscapeWidth,
+            preloadMaximumWidth: landscapeSize.width,
             onPreloadFinished: { landscapeArtworkPrepared = true },
-            size: CGSize(width: effectiveLandscape ? Self.landscapeWidth : Self.portraitWidth, height: Self.height),
+            size: effectiveLandscape ? landscapeSize : Self.portraitSize,
             watched: watchedState,
             progress: continueIsUpNext ? nil : continueProgress,
             badge: PosterBadge.make(
@@ -151,7 +159,7 @@ struct PosterCard: View {
                 episodeText: continueEpisodeText,
                 remainingText: continueRemainingText
             ),
-            caption: PosterCaption(title: meta.name),
+            caption: isAlwaysLandscape ? nil : PosterCaption(title: meta.name),
             externalFocus: externalFocus,
             focusValue: externalFocusValue,
             shouldRequestInitialFocus: shouldRequestInitialFocus,
@@ -252,11 +260,11 @@ struct PosterCard: View {
                         fallbackTitle
                     }
                 }
-                .frame(width: 275, height: 84, alignment: .leading)
+                .frame(width: landscapeSize.width * 0.5, height: landscapeSize.height * 0.27, alignment: .leading)
                 .padding(22)
             } else {
                 fallbackTitle
-                    .frame(maxWidth: Self.landscapeWidth * 0.62, alignment: .leading)
+                    .frame(maxWidth: landscapeSize.width * 0.62, alignment: .leading)
                     .padding(22)
             }
         }
@@ -266,32 +274,32 @@ struct PosterCard: View {
         VStack(alignment: .leading, spacing: 3) {
             if let continueEpisodeText {
                 Text(continueEpisodeText)
-                    .font(.system(size: 25, weight: .medium))
+                    .font(.system(size: compactOverlay ? 20 : 25, weight: .medium))
                     .foregroundColor(.white)
                     .lineLimit(1)
             }
 
             Text(meta.name)
-                .font(.system(size: 28, weight: .semibold))
+                .font(.system(size: compactOverlay ? 24 : 28, weight: .semibold))
                 .foregroundColor(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.82)
 
             if let continueEpisodeTitleText, !continueEpisodeTitleText.isEmpty {
                 Text(continueEpisodeTitleText)
-                    .font(.system(size: 23, weight: .medium))
+                    .font(.system(size: compactOverlay ? 20 : 23, weight: .medium))
                     .foregroundColor(.white.opacity(0.66))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
             }
         }
-        .frame(maxWidth: Self.landscapeWidth * 0.70, alignment: .leading)
-        .padding(EdgeInsets(top: 22, leading: 22, bottom: 54, trailing: 22))
+        .frame(maxWidth: landscapeSize.width * 0.70, alignment: .leading)
+        .padding(EdgeInsets(top: 22, leading: 22, bottom: compactOverlay ? 44 : 54, trailing: 22))
     }
 
     private var fallbackTitle: some View {
         Text(meta.name)
-            .font(.custom("Inter-Bold", size: 34))
+            .font(.system(size: 34, weight: .bold))
             .foregroundColor(.white)
             .lineLimit(2)
     }
@@ -317,7 +325,7 @@ struct PosterCard: View {
     }
 
     private var effectiveLandscape: Bool {
-        isLandscape && (landscapeArtworkPrepared || landscapeArtworkURL == nil)
+        isAlwaysLandscape || (isLandscape && (landscapeArtworkPrepared || landscapeArtworkURL == nil))
     }
 
     private var landscapeArtworkURL: String? {
@@ -330,7 +338,8 @@ struct PosterCard: View {
     }
 
     private var landscapePreloadURL: String? {
-        landscapePreloadArmed || isLandscape ? landscapeArtworkURL : nil
+        guard !isAlwaysLandscape else { return nil }
+        return landscapePreloadArmed || isLandscape ? landscapeArtworkURL : nil
     }
 
     private var isContinueOrUpcomingCard: Bool {
@@ -406,6 +415,7 @@ struct PosterCardStaticKey: Equatable {
     let year: String?
     let trailerYtIds: [String]?
     let isLandscape: Bool
+    let fixedLandscapeWidth: String?
     let continueProgress: String?
     let continueRemainingText: String?
     let continueEpisodeText: String?
@@ -437,6 +447,7 @@ extension PosterCard {
             year: meta.year.map { "\($0)" },
             trailerYtIds: meta.trailerYtIds,
             isLandscape: isLandscape,
+            fixedLandscapeWidth: fixedLandscapeSize.map { "\($0.width)" },
             continueProgress: continueProgress.map { "\($0)" },
             continueRemainingText: continueRemainingText,
             continueEpisodeText: continueEpisodeText,

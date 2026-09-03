@@ -27,6 +27,8 @@ struct PinnedHorizontalRow<Item: Identifiable, Card: View>: View {
             .scrollTargetLayout()
         }
         .scrollIndicators(.hidden)
+        // The lifted item and its shadow draw outside the row, as in the TV app.
+        .scrollClipDisabled()
         .scrollPosition(id: $pinnedID, anchor: .leading)
         .contentMargins(.leading, leadingMargin, for: .scrollContent)
         .padding(.trailing, -trailingBleed)

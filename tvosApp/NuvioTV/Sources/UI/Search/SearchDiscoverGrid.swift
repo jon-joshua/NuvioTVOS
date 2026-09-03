@@ -12,9 +12,9 @@ struct SearchDiscoverGrid: View {
     @StateObject private var viewModel = DiscoverViewModel()
     @AppStorage(SettingsKey.hideUnreleased) private var hideUnreleased = false
 
-    private let posterWidth: CGFloat = 210
-    private let posterHeight: CGFloat = 315
-    private let posterGap: CGFloat = 28
+    private let posterWidth: CGFloat = 260
+    private let posterHeight: CGFloat = 390
+    private let posterGap: CGFloat = 40
 
     var body: some View {
         ScrollView {

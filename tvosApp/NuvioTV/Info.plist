@@ -69,10 +69,6 @@
 	<string>This app does not require microphone access.</string>
 	<key>PREMIUMIZE_CLIENT_ID</key>
 	<string></string>
-	<key>UIAppFonts</key>
-	<array>
-		<string>inter_variable.ttf</string>
-	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

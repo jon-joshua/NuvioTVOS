@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// The one poster. Owns the Button, the system card style, the focus plumbing,
+/// The one poster. Owns the Button, the system lockup style, the focus plumbing,
 /// the context menu, the badges, the progress bar and the caption, so every
 /// screen's poster lifts, highlights and clips the same way. Screens map their
 /// model onto these parameters and, at most, fill the overlay slot.
 ///
-/// Nothing here draws chrome: no outline, no shadow, no scale, no hover effect.
-/// `.buttonStyle(.card)` is the whole focus treatment, and it must wrap exactly
-/// the artwork plate, so the caption sits outside the Button.
+/// Nothing here draws chrome: no outline, no shadow, no scale of our own.
+/// `.buttonStyle(.borderless)` is the whole focus treatment, as in the TV app:
+/// the artwork lifts and tilts, and the caption below it slides out of the way.
 struct PosterTile<Overlay: View>: View {
     let meta: NuvioMeta
     /// Defaults to the poster. Home passes the landscape art while expanded.
@@ -18,7 +18,7 @@ struct PosterTile<Overlay: View>: View {
     var preloadMaximumWidth: CGFloat? = nil
     /// Called when the preload has been decoded, or has failed.
     var onPreloadFinished: () -> Void = {}
-    var size = CGSize(width: 210, height: 315)
+    var size = CGSize(width: 260, height: 390)
     var watched: PosterWatched = .lookup
     /// 0...1 draws the bar; nil hides it.
     var progress: Double? = nil
@@ -46,36 +46,19 @@ struct PosterTile<Overlay: View>: View {
     @Environment(\.posterLabels) private var posterLabels
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Button(action: action) {
-                CachedPosterArtwork(
-                    urlString: artworkURL ?? meta.posterUrl,
-                    preloadURLString: preloadURL,
-                    width: size.width,
-                    height: size.height,
-                    maximumWidth: size.width,
-                    preloadMaximumWidth: preloadMaximumWidth,
-                    minimumSwapDelay: 0,
-                    onPreloadFinished: onPreloadFinished
-                ) {
-                    PosterTilePlaceholder(type: meta.type)
-                }
-                .frame(width: size.width, height: size.height)
-                .overlay { overlay() }
-                .overlay(alignment: .bottomLeading) { progressBar }
-                .overlay(alignment: .topLeading) { chip }
-                .overlay(alignment: .topTrailing) { watchedBadge }
-            }
-            .buttonStyle(.card)
-            .focused($focused)
-            .modifier(ExternalFocusBinding(binding: externalFocus, id: focusValue ?? meta.id))
-            .modifier(PosterMoveCommandHandler(handler: onMove))
-            .modifier(TitleActionsMenu(meta: meta, actions: contextActions ?? TitleActions(onOpenDetails: action)))
-
+        // Apple's lockup: image and text as separate views in the label. The
+        // borderless style lifts the artwork and slides the caption down.
+        Button(action: action) {
+            plate
             if let caption, posterLabels || alwaysShowCaption {
                 captionView(caption)
             }
         }
+        .buttonStyle(.borderless)
+        .focused($focused)
+        .modifier(ExternalFocusBinding(binding: externalFocus, id: focusValue ?? meta.id))
+        .modifier(PosterMoveCommandHandler(handler: onMove))
+        .modifier(TitleActionsMenu(meta: meta, actions: contextActions ?? TitleActions(onOpenDetails: action)))
         .animation(NuvioMotion.focus, value: focused)
         .onChange(of: focused) { _, isFocused in onFocusChange?(isFocused) }
         .onAppear {
@@ -84,6 +67,30 @@ struct PosterTile<Overlay: View>: View {
             onInitialFocusRequested?()
             DispatchQueue.main.async { focused = true }
         }
+    }
+
+    /// The artwork with everything drawn on it. One view, so the whole plate
+    /// lifts together rather than the system finding the first Image inside.
+    private var plate: some View {
+        CachedPosterArtwork(
+            urlString: artworkURL ?? meta.posterUrl,
+            preloadURLString: preloadURL,
+            width: size.width,
+            height: size.height,
+            maximumWidth: size.width,
+            preloadMaximumWidth: preloadMaximumWidth,
+            minimumSwapDelay: 0,
+            onPreloadFinished: onPreloadFinished
+        ) {
+            PosterTilePlaceholder(type: meta.type)
+        }
+        .frame(width: size.width, height: size.height)
+        .overlay { overlay() }
+        .overlay(alignment: .bottomLeading) { progressBar }
+        .overlay(alignment: .topLeading) { chip }
+        .overlay(alignment: .topTrailing) { watchedBadge }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .hoverEffect(.highlight)
     }
 
     @ViewBuilder
@@ -130,12 +137,12 @@ struct PosterTile<Overlay: View>: View {
     private func captionView(_ caption: PosterCaption) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(caption.title)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: 25, weight: .semibold))
                 .foregroundStyle(focused ? .white : .white.opacity(0.78))
                 .lineLimit(1)
             if let subtitle = caption.subtitle {
                 Text(subtitle)
-                    .font(.system(size: 16, weight: .medium))
+                    .font(.system(size: 23, weight: .medium))
                     .foregroundStyle(.white.opacity(0.45))
                     .lineLimit(1)
             }
@@ -148,7 +155,7 @@ extension PosterTile where Overlay == EmptyView {
     init(
         meta: NuvioMeta,
         artworkURL: String? = nil,
-        size: CGSize = CGSize(width: 210, height: 315),
+        size: CGSize = CGSize(width: 260, height: 390),
         watched: PosterWatched = .lookup,
         progress: Double? = nil,
         badge: PosterBadge? = nil,

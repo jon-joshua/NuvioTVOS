@@ -8,9 +8,9 @@ import OSLog
 
 /// Grid metrics matching Search / Library poster cards (Tabs view mode).
 enum CollectionFolderGridMetrics {
-    static let posterWidth: CGFloat = 210
-    static let posterHeight: CGFloat = 315
-    static let posterGap: CGFloat = 28
+    static let posterWidth: CGFloat = 260
+    static let posterHeight: CGFloat = 390
+    static let posterGap: CGFloat = 40
 }
 
 /// One catalog strip inside Rows view mode (Android `RowsContent`).
@@ -772,24 +772,24 @@ private struct CollectionFolderHomeStyleRow: View {
     @AppStorage(SettingsKey.focusedPosterBackdropDelay) private var focusedPosterBackdropDelay = 3
 
     private var posterWidth: CGFloat {
-        210
+        250
     }
 
     private var rowSpacing: CGFloat {
-        28
+        40
     }
 
     private var step: CGFloat { posterWidth + rowSpacing }
 
     private var stripHeight: CGFloat {
-        let imageHeight: CGFloat = 315
-        return imageHeight + (showPosterLabels ? 48 : 0) + TVHomeLayout.stripVerticalPadding * 2
+        let imageHeight: CGFloat = 390
+        return imageHeight + (showPosterLabels ? TVHomeLayout.captionBlock : 0) + TVHomeLayout.stripVerticalPadding * 2
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: TVHomeLayout.rowTitleSpacing) {
             Text(title)
-                .font(.custom("Inter-Bold", size: 30))
+                .font(TVHomeLayout.rowTitleFont)
                 .foregroundColor(.white)
                 .padding(.leading, TVLayout.rowLeading)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -821,10 +821,10 @@ private struct CollectionFolderHomeStyleRow: View {
             let stripWidth = geo.size.width + edgeInset * 2
             let rowPosterLabels = showPosterLabels
             let rowSmoothFocus = smoothFocus
-            let rowStep = 210.0
-                + 28.0
+            let rowStep = 260.0
+                + 40.0
 
-            HStack(alignment: .bottom, spacing: 28) {
+            HStack(alignment: .bottom, spacing: 40) {
                 ForEach(items) { item in
                     let cardKey = "\(rowId)\u{1}\(item.id)"
                     PosterCard(
@@ -855,7 +855,7 @@ private struct CollectionFolderHomeStyleRow: View {
                 if isLoadingMore {
                     ProgressView()
                         .tint(.white)
-                        .frame(width: posterWidth, height: 315)
+                        .frame(width: posterWidth, height: 390)
                 }
             }
             .padding(.vertical, TVHomeLayout.stripVerticalPadding)
@@ -863,8 +863,8 @@ private struct CollectionFolderHomeStyleRow: View {
             .offset(x: edgeInset + TVLayout.rowLeading - CGFloat(scrollIndex) * rowStep)
             .frame(
                 width: stripWidth,
-                height: 315
-                    + (rowPosterLabels ? 48 : 0)
+                height: 390
+                    + (rowPosterLabels ? TVHomeLayout.captionBlock : 0)
                     + TVHomeLayout.stripVerticalPadding * 2,
                 alignment: .leading
             )

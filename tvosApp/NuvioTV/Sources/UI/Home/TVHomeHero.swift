@@ -147,7 +147,7 @@ struct TVCollectionFolderHeroView: View {
                         }
 
                         Text(displayTitle)
-                            .font(.custom("Inter-Bold", size: 48))
+                            .font(.system(size: 48, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(2)
                             .minimumScaleFactor(0.7)
@@ -180,7 +180,7 @@ struct TVHeroView: View {
                 CachedHeroLogo(url: logoUrl, title: meta.name)
             } else {
                 Text(meta.name)
-                    .font(.custom("Inter-Bold", size: 54))
+                    .font(.system(size: 54, weight: .bold))
                     .lineLimit(2)
                     .foregroundColor(.white)
             }
@@ -189,13 +189,13 @@ struct TVHeroView: View {
 
             if let continueItem {
                 Text(continueItem.isUpNextEntry ? continueItem.upNextBadgeText : continueItem.remainingText.uppercased())
-                    .font(.custom("Inter-SemiBold", size: 22))
+                    .font(.system(size: 22, weight: .semibold))
                     .foregroundColor(.white.opacity(0.66))
             }
 
             if let description = heroDescription {
                 Text(description.wrappedEveryNWords(9))
-                    .font(.custom("Inter-Regular", size: 24))
+                    .font(.system(size: 24, weight: .regular))
                     .foregroundColor(.white)
                     .lineSpacing(3)
                     .lineLimit(4)
@@ -282,7 +282,7 @@ private struct CachedHeroLogo: View {
                 .frame(maxWidth: 520, maxHeight: 136, alignment: .bottomLeading)
             } else {
                 Text(title)
-                    .font(.custom("Inter-Bold", size: 54))
+                    .font(.system(size: 54, weight: .bold))
                     .lineLimit(2)
                     .foregroundColor(.white)
             }
@@ -355,7 +355,7 @@ private struct TVHeroMetaLine: View {
             VStack(alignment: .leading, spacing: 10) {
                 if hasPrimary {
                     Text(primaryValues.joined(separator: "  •  "))
-                        .font(.custom("Inter-SemiBold", size: 22))
+                        .font(.system(size: 22, weight: .semibold))
                         .foregroundColor(.white.opacity(0.66))
                         .lineLimit(1)
                 }
@@ -365,7 +365,7 @@ private struct TVHeroMetaLine: View {
                     HStack(spacing: 14) {
                         if let badge {
                             Text(badge)
-                                .font(.custom("Inter-SemiBold", size: 17))
+                                .font(.system(size: 17, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.88))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 4)
@@ -377,7 +377,7 @@ private struct TVHeroMetaLine: View {
 
                         if let rating {
                             Text(badge != nil ? "•  \(rating)" : rating)
-                                .font(.custom("Inter-SemiBold", size: 22))
+                                .font(.system(size: 22, weight: .semibold))
                                 .foregroundColor(.white.opacity(0.66))
                                 .lineLimit(1)
                         }
