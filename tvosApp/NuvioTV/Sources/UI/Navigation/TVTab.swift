@@ -4,8 +4,8 @@ import SwiftUI
 /// identity; `title` and `symbol` are what the sidebar shows.
 enum TVTab: String, CaseIterable, Identifiable {
     case profile = "Profile"
-    case home = "Home"
     case search = "Search"
+    case home = "Home"
     case library = "Library"
     case settings = "Settings"
 

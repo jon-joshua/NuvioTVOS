@@ -232,7 +232,8 @@ public struct LibraryView: View {
                     cloudContent
                 }
             }
-            .padding(.horizontal, LibraryGridMetrics.pageInset)
+            .padding(.leading, NavigationRailMetrics.contentLeading)
+            .padding(.trailing, LibraryGridMetrics.pageInset)
             .padding(.top, 56)
             .ignoresSafeArea(edges: .bottom)
         }

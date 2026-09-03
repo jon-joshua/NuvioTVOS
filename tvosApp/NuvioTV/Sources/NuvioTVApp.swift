@@ -2571,6 +2571,8 @@ struct TVHomeView: View {
     @State private var landscapeFocusedId: String?
     @State private var focusWork = TVHomeFocusWork()
     @State private var rowScrollStore = TVHomeRowScrollStore()
+    /// Bumped when the rail opens; rows watch it and snap back to their first card.
+    @State private var rowResetGeneration = 0
     @State private var homeReloadTask: Task<Void, Never>?
     /// Add-on/catalog settings the last completed load actually read.
     @State private var lastLoadedInputSignature: String?
@@ -2617,6 +2619,7 @@ struct TVHomeView: View {
     /// can be traced back to the slot it occupied. See the retarget below.
     @State private var continueWatchingCardIDs: [String] = []
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.navigationRailShift) private var railShift
     @State private var focusedRowIndex = 0
     @State private var browsingSection: TVHomeSection?
     @State private var gridHeroIndex = 0
@@ -3018,6 +3021,10 @@ struct TVHomeView: View {
             .equatable()
             .ignoresSafeArea()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // Hold the backdrop still while the rail slides the page (see
+            // navigationRailShift); only the content should move.
+            .offset(x: -railShift)
+            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: railShift)
             
             // 2. Gradients overlay for backdrop blending and readability.
             // Uses the selected body background color (not pure black) so the
@@ -3039,6 +3046,8 @@ struct TVHomeView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
             }
             .ignoresSafeArea()
+            .offset(x: -railShift)
+            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: railShift)
 
             GeometryReader { proxy in
                 VStack(spacing: 0) {
@@ -3057,6 +3066,9 @@ struct TVHomeView: View {
                 }
             }
             .ignoresSafeArea()
+            .offset(x: -railShift)
+            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: railShift)
+            .animation(.spring(response: 0.34, dampingFraction: 0.86), value: railShift)
 
             // 3. Scrollable catalog rows overlay, with pinned Hero at the top
             VStack(alignment: .leading, spacing: 0) {
@@ -3151,6 +3163,7 @@ struct TVHomeView: View {
                                                 horizontalEdgeInset: horizontalEdgeInset,
                                                 folders: section.collectionFolders,
                                                 initialScrollIndex: rowScrollStore.index(for: section.id),
+resetGeneration: rowResetGeneration,
                                                 onScrollIndexChange: { newIndex in
                                                     rowScrollStore.setIndex(newIndex, for: section.id)
                                                 },
@@ -3202,6 +3215,7 @@ struct TVHomeView: View {
                                                     ? continueWatchingByMetaId : [:],
                                                 watchedTitleKeys: watchedTitleKeys,
                                                 initialScrollIndex: rowScrollStore.index(for: section.id),
+resetGeneration: rowResetGeneration,
                                                 onScrollIndexChange: { newIndex in
                                                     rowScrollStore.setIndex(newIndex, for: section.id)
                                                 },
@@ -3324,6 +3338,9 @@ struct TVHomeView: View {
                                         .frame(height: proxy.size.height + TVHomeLayout.finalRowScrollRunway)
                                         .accessibilityHidden(true)
                                 }
+                                .onChange(of: railShift) { _, shift in
+                                    if shift > 0 { resetRowsForRail(using: verticalScrollProxy) }
+                                }
                             }
                         }
                     }
@@ -3352,6 +3369,15 @@ struct TVHomeView: View {
                     .allowsHitTesting(false)
             }
         }
+    }
+
+    /// Opening the rail resets Home, Plex-style: every row back to its first
+    /// card and the list back to the top, animated, so the left edge is clean.
+    private func resetRowsForRail(using proxy: ScrollViewProxy) {
+        rowResetGeneration += 1
+        rowScrollStore.removeAll()
+        guard let first = visibleSections.first(where: \.hasContent)?.id else { return }
+        withAnimation(TVHomeLayout.scrollAnimation) { proxy.scrollTo(first, anchor: .top) }
     }
 
     /// - Parameter heroBleed: Horizontal safe-area inset this grid sits inside.
@@ -3400,6 +3426,7 @@ struct TVHomeView: View {
                             horizontalEdgeInset: heroBleed,
                             folders: section.collectionFolders,
                             initialScrollIndex: rowScrollStore.index(for: section.id),
+                            resetGeneration: rowResetGeneration,
                             onScrollIndexChange: { rowScrollStore.setIndex($0, for: section.id) },
                             initialFocusCardKey: initialFocusCardKey,
                             externalFocus: $focusedCardID,
@@ -3429,6 +3456,7 @@ struct TVHomeView: View {
                             progressByItemId: continueWatchingByMetaId,
                             watchedTitleKeys: watchedTitleKeys,
                             initialScrollIndex: rowScrollStore.index(for: section.id),
+                            resetGeneration: rowResetGeneration,
                             onScrollIndexChange: { rowScrollStore.setIndex($0, for: section.id) },
                             initialFocusCardKey: initialFocusCardKey,
                             landscapeFocusedId: nil,
@@ -6158,6 +6186,8 @@ private struct TVCatalogRow: View {
     var progressByItemId: [String: ContinueWatchingItem] = [:]
     var watchedTitleKeys: Set<String> = []
     var initialScrollIndex: Int = 0
+    /// See TVHomeView.resetRowsForRail.
+    var resetGeneration: Int = 0
     var onScrollIndexChange: (Int) -> Void = { _ in }
     /// Composite key ("<sectionId>\u{1}<metaId>") of the card that should take
     /// focus on appear — the first card on a fresh load, or the card the user
@@ -6283,6 +6313,7 @@ private struct TVCatalogRow: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .focusSection()
         .defaultFocusIfAvailable(externalFocus, defaultFocusCardKey)
+        .onChange(of: resetGeneration) { _, _ in resetToStart() }
     }
 
     // A definite-size clipping window for the cards. A GeometryReader imposes
@@ -6446,6 +6477,12 @@ private struct TVCatalogRow: View {
     ) {
         TVHomeDebugTrace.log("row.layout row=\(rowID) items=\(itemCount) mounted=\(mountedCount) index=\(index)")
     }
+
+    /// Animate this row back to its first card (rail opened, see TVHomeView).
+    private func resetToStart() {
+        withAnimation(TVHomeLayout.scrollAnimation) { scrollIndex = 0 }
+        onScrollIndexChange(0)
+    }
 }
 
 // Keep row identity and horizontal state stable, while allowing the focused
@@ -6469,6 +6506,7 @@ extension TVCatalogRow: Equatable {
             && lhs.items == rhs.items
             && lhs.watchedTitleKeys == rhs.watchedTitleKeys
             && lhs.initialScrollIndex == rhs.initialScrollIndex
+            && lhs.resetGeneration == rhs.resetGeneration
             && lhs.initialFocusCardKey == rhs.initialFocusCardKey
             && lhs.landscapeFocusedId == rhs.landscapeFocusedId
             && restrictEqual
@@ -6867,6 +6905,8 @@ private struct TVCollectionFolderRow: View {
     let horizontalEdgeInset: CGFloat
     let folders: [TVCollectionFolderItem]
     let initialScrollIndex: Int
+    /// See TVHomeView.resetRowsForRail.
+    var resetGeneration: Int = 0
     let onScrollIndexChange: (Int) -> Void
     let initialFocusCardKey: String?
     var externalFocus: FocusState<String?>.Binding? = nil
@@ -6968,6 +7008,7 @@ private struct TVCollectionFolderRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .focusSection()
+.onChange(of: resetGeneration) { _, _ in resetToStart() }
         .defaultFocusIfAvailable(externalFocus, defaultFocusFolderKey)
     }
 
@@ -7045,6 +7086,12 @@ private struct TVCollectionFolderRow: View {
         }
         .frame(height: stripHeight)
     }
+
+    /// Animate this row back to its first card (rail opened, see TVHomeView).
+    private func resetToStart() {
+        withAnimation(TVHomeLayout.scrollAnimation) { scrollIndex = 0 }
+        onScrollIndexChange(0)
+    }
 }
 
 // Keep row identity and horizontal state stable, while allowing the focused
@@ -7064,6 +7111,7 @@ extension TVCollectionFolderRow: Equatable {
         return lhs.id == rhs.id
             && lhs.title == rhs.title
             && lhs.horizontalEdgeInset == rhs.horizontalEdgeInset
+&& lhs.resetGeneration == rhs.resetGeneration
             && lhs.folders == rhs.folders
             && lhs.initialScrollIndex == rhs.initialScrollIndex
             && lhs.initialFocusCardKey == rhs.initialFocusCardKey
@@ -8686,8 +8734,9 @@ private enum TVHomeLayout {
 }
 
 private enum TVLayout {
-    static let contentLeading: CGFloat = 150
-    static let rowLeading: CGFloat = 48
+    static let contentLeading: CGFloat = 10
+    /// Shared gutter: every screen starts its content here, clear of the rail.
+    static let rowLeading: CGFloat = NavigationRailMetrics.contentLeading
 }
 
 extension Color {
