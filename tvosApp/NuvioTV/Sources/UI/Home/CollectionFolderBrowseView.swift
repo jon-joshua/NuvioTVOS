@@ -49,15 +49,11 @@ struct CollectionFolderBrowseView: View {
     @State private var selectedTabIndex = 0
     @FocusState private var focusedItemID: String?
     @FocusState private var isLoadingFocusActive: Bool
-    @State private var lastFocusedItemID: String?
-    @State private var focusRestoreGeneration = 0
     @State private var watchedTitleKeys: Set<String> = []
     @State private var cachedCollectionMetadata: [String: NuvioMeta] = [:]
     @State private var collectionEnrichmentTask: Task<Void, Never>?
-    @Environment(\.isEnabled) private var isEnabled
     @AppStorage(SettingsKey.amoled) private var amoled = false
     @AppStorage(SettingsKey.bodyColor) private var bodyColor = SettingsBackground.charcoal.rawValue
-    @AppStorage(SettingsKey.homeLayout) private var homeLayout = "Modern"
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
 
     private let pageSize = 40
@@ -68,12 +64,6 @@ struct CollectionFolderBrowseView: View {
         return ["STREAMING_SERVICE", "STUDIO_FRANCHISE"].contains(
             folder.presentationStyle?.uppercased() ?? ""
         )
-    }
-    /// A folder opened in Rows mode should retain Home-row behavior even when
-    /// the top-level Home preference is Grid View. Compact remains compact;
-    /// every other layout uses the normal portrait-to-landscape Home row.
-    private var collectionRowLayoutMode: String {
-        homeLayout == "Compact" ? "Compact" : "Modern"
     }
 
     private var heading: String {
@@ -143,30 +133,11 @@ struct CollectionFolderBrowseView: View {
         .onReceive(NotificationCenter.default.publisher(for: WatchedStore.changedNotification)) { _ in
             refreshWatchedTitles()
         }
-        .onChange(of: focusedItemID) { _, newValue in
-            if let newValue { lastFocusedItemID = newValue }
-        }
         .onChange(of: isLoading) { _, loading in
             if loading {
                 requestLoadingFocusIfNeeded()
             } else {
                 isLoadingFocusActive = false
-            }
-        }
-        .onChange(of: isEnabled) { _, enabled in
-            if !enabled {
-                focusRestoreGeneration &+= 1
-                if let focusedItemID { lastFocusedItemID = focusedItemID }
-            } else if let target = lastFocusedItemID {
-                let generation = focusRestoreGeneration
-                DispatchQueue.main.async {
-                    guard focusRestoreGeneration == generation else { return }
-                    focusedItemID = target
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                    guard focusRestoreGeneration == generation else { return }
-                    focusedItemID = target
-                }
             }
         }
     }
@@ -247,7 +218,6 @@ struct CollectionFolderBrowseView: View {
                                 title: row.title,
                                 items: row.items,
                                 isLoadingMore: row.isLoadingMore,
-                                layoutMode: collectionRowLayoutMode,
                                 showPosterLabels: posterLabels,
                                 externalFocus: $focusedItemID,
                                 watchedTitleKeys: watchedTitleKeys,
@@ -450,7 +420,6 @@ struct CollectionFolderBrowseView: View {
                                 title: row.title,
                                 items: row.items,
                                 isLoadingMore: row.isLoadingMore,
-                                layoutMode: collectionRowLayoutMode,
                                 showPosterLabels: posterLabels,
                                 externalFocus: $focusedItemID,
                                 watchedTitleKeys: watchedTitleKeys,
@@ -781,7 +750,6 @@ private struct CollectionFolderHomeStyleRow: View {
     let title: String
     let items: [NuvioMeta]
     var isLoadingMore: Bool = false
-    var layoutMode: String = "Modern"
     var showPosterLabels: Bool = false
     var externalFocus: FocusState<String?>.Binding? = nil
     let watchedTitleKeys: Set<String>
@@ -797,23 +765,23 @@ private struct CollectionFolderHomeStyleRow: View {
     @State private var landscapeFocusedId: String?
     @State private var pendingLandscapeFocusedId: String?
     @State private var landscapeFocusTask: Task<Void, Never>?
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
     @AppStorage(SettingsKey.focusedPosterBackdropEnabled) private var focusedPosterBackdropEnabled = true
     @AppStorage(SettingsKey.focusedPosterBackdropDelay) private var focusedPosterBackdropDelay = 3
 
     private var posterWidth: CGFloat {
-        layoutMode == "Compact" ? 170 : 210
+        210
     }
 
     private var rowSpacing: CGFloat {
-        layoutMode == "Compact" ? 22 : 28
+        28
     }
 
     private var step: CGFloat { posterWidth + rowSpacing }
 
     private var stripHeight: CGFloat {
-        let imageHeight: CGFloat = layoutMode == "Compact" ? 255 : 315
+        let imageHeight: CGFloat = 315
         return imageHeight + (showPosterLabels ? 48 : 0) + TVHomeLayout.stripVerticalPadding * 2
     }
 
@@ -850,19 +818,18 @@ private struct CollectionFolderHomeStyleRow: View {
         GeometryReader { geo in
             let edgeInset = max(0, geo.frame(in: .global).minX)
             let stripWidth = geo.size.width + edgeInset * 2
-            let rowHomeLayout = layoutMode
             let rowPosterLabels = showPosterLabels
             let rowSmoothFocus = smoothFocus
             let rowFocusHighlighter = focusHighlighter
-            let rowStep = (rowHomeLayout == "Compact" ? 170.0 : 210.0)
-                + (rowHomeLayout == "Compact" ? 22.0 : 28.0)
+            let rowStep = 210.0
+                + 28.0
 
-            HStack(alignment: .bottom, spacing: rowHomeLayout == "Compact" ? 22 : 28) {
+            HStack(alignment: .bottom, spacing: 28) {
                 ForEach(items) { item in
                     let cardKey = "\(rowId)\u{1}\(item.id)"
                     PosterCard(
                         meta: item,
-                        isLandscape: rowHomeLayout == "Modern" && landscapeFocusedId == cardKey,
+                        isLandscape: landscapeFocusedId == cardKey,
                         onFocus: { focused in
                             if let index = items.firstIndex(where: { $0.id == focused.id }) {
                                 if scrollIndex != index {
@@ -879,7 +846,6 @@ private struct CollectionFolderHomeStyleRow: View {
                         },
                         externalFocus: externalFocus,
                         externalFocusValue: cardKey,
-                        layoutMode: rowHomeLayout,
                         showPosterLabels: rowPosterLabels,
                         smoothFocusAnimations: rowSmoothFocus,
                         focusHighlighterEnabled: rowFocusHighlighter,
@@ -892,7 +858,7 @@ private struct CollectionFolderHomeStyleRow: View {
                 if isLoadingMore {
                     ProgressView()
                         .tint(.white)
-                        .frame(width: posterWidth, height: rowHomeLayout == "Compact" ? 255 : 315)
+                        .frame(width: posterWidth, height: 315)
                 }
             }
             .padding(.vertical, TVHomeLayout.stripVerticalPadding)
@@ -900,7 +866,7 @@ private struct CollectionFolderHomeStyleRow: View {
             .offset(x: edgeInset + TVLayout.rowLeading - CGFloat(scrollIndex) * rowStep)
             .frame(
                 width: stripWidth,
-                height: (rowHomeLayout == "Compact" ? 255 : 315)
+                height: 315
                     + (rowPosterLabels ? 48 : 0)
                     + TVHomeLayout.stripVerticalPadding * 2,
                 alignment: .leading
@@ -926,7 +892,7 @@ private struct CollectionFolderHomeStyleRow: View {
     /// Wait for the configured backdrop delay before expanding the settled
     /// portrait card, and cancel when focus moves away.
     private func scheduleLandscapeFocus(cardKey: String) {
-        guard layoutMode == "Modern", focusedPosterBackdropEnabled else {
+        guard focusedPosterBackdropEnabled else {
             pendingLandscapeFocusedId = nil
             landscapeFocusedId = nil
             landscapeFocusTask?.cancel()
@@ -969,7 +935,7 @@ private struct CollectionFolderTabButton: View {
     let action: () -> Void
 
     @FocusState private var isFocused: Bool
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     var body: some View {

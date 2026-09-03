@@ -155,3 +155,76 @@ final class PictureInPictureTests: XCTestCase {
         manager.invalidateSession()
     }
 }
+
+// MARK: - Player presentation round trip
+
+@MainActor
+final class PlayerPresentationTests: XCTestCase {
+    /// A PiP restore rebuilds the player cover from the saved context; every
+    /// field the player is constructed from has to survive the round trip.
+    func testPlayerPresentationRoundTripsActivePlaybackContext() {
+        let url = URL(string: "https://example.com/episode.mkv")!
+        let meta = NuvioMeta(
+            id: "tt7654321", name: "Sample Series", description: nil, posterUrl: nil,
+            backgroundUrl: nil, logoUrl: nil, imdbId: "tt7654321", tmdbId: nil,
+            type: "series", year: 2024, genres: nil, rating: nil, releaseInfo: nil,
+            runtime: nil, cast: nil, director: nil, writer: nil, certification: nil,
+            country: nil, released: nil, status: nil, videos: nil, trailerYtIds: nil,
+            externalRatings: nil
+        )
+        let episode = NuvioVideo(
+            id: "tt7654321:2:5", title: "Episode 5", season: 2, episode: 5,
+            thumbnail: nil, overview: nil, released: nil, rating: nil
+        )
+        let context = ActivePlaybackContext(
+            url: url,
+            meta: meta,
+            subtitle: "S2 · E5 · Episode 5",
+            httpHeaders: ["Referer": "https://example.com"],
+            externalSubtitles: [],
+            resumeFrom: 42.5,
+            episodes: [episode],
+            currentEpisode: episode,
+            autoPlayNextEnabled: true,
+            autoPlayNextCountdownSeconds: 10,
+            playbackOrigin: .cloudLibrary
+        )
+
+        let presentation = PlayerPresentation(from: context)
+
+        XCTAssertEqual(presentation.url, url)
+        XCTAssertEqual(presentation.meta, meta)
+        XCTAssertEqual(presentation.subtitle, context.subtitle)
+        XCTAssertEqual(presentation.httpHeaders, context.httpHeaders)
+        XCTAssertEqual(presentation.externalSubtitles.count, 0)
+        XCTAssertEqual(presentation.resumeFrom, 42.5)
+        XCTAssertEqual(presentation.episodes, [episode])
+        XCTAssertEqual(presentation.currentEpisode, episode)
+        XCTAssertEqual(presentation.origin, .cloudLibrary)
+        XCTAssertFalse(presentation.isTrailer)
+        XCTAssertEqual(presentation.detailsKey, "series:tt7654321")
+    }
+
+    func testPlayerPresentationIdentityIsFreshPerPresentation() {
+        let url = URL(string: "https://example.com/movie.mp4")!
+        let meta = NuvioMeta(
+            id: "tt1111111", name: "Sample Movie", description: nil, posterUrl: nil,
+            backgroundUrl: nil, logoUrl: nil, imdbId: "tt1111111", tmdbId: nil,
+            type: "movie", year: 2024, genres: nil, rating: nil, releaseInfo: nil,
+            runtime: nil, cast: nil, director: nil, writer: nil, certification: nil,
+            country: nil, released: nil, status: nil, videos: nil, trailerYtIds: nil,
+            externalRatings: nil
+        )
+        let first = PlayerPresentation(
+            url: url, meta: meta, subtitle: PlaybackMarkers.trailerSubtitle, httpHeaders: [:],
+            externalSubtitles: [], resumeFrom: nil, episodes: [], currentEpisode: nil, origin: .details
+        )
+        let second = PlayerPresentation(
+            url: url, meta: meta, subtitle: PlaybackMarkers.trailerSubtitle, httpHeaders: [:],
+            externalSubtitles: [], resumeFrom: nil, episodes: [], currentEpisode: nil, origin: .details
+        )
+        // Re-presenting the same URL must still replace the cover.
+        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertTrue(first.isTrailer)
+    }
+}

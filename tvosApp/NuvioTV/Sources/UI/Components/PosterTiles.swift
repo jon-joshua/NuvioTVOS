@@ -6,33 +6,31 @@ import OSLog
 
 // MARK: - Poster tile chrome
 
-/// The five appearance settings every grid poster tile needs, resolved once per
+/// The two appearance settings every grid poster tile needs, resolved once per
 /// screen instead of once per card. Before this existed each tile carried five
 /// `@AppStorage` wrappers, so a grid of ~28 cards registered ~140 UserDefaults
 /// observers and tore them down again on every scroll recycle.
 struct PosterChromeStyle: Equatable {
     /// Whether the title/subtitle caption is drawn under the artwork.
     var posterLabels: Bool = false
-    /// Spring focus transitions; off means focus changes snap.
-    var smoothFocus: Bool = true
-    /// Accessibility setting: thicker focus outline.
+    /// Debug aid from Advanced settings: thicker focus outline.
     var focusHighlighter: Bool = false
-    /// Already resolved from the raw settings string to points.
-    var cornerRadius: CGFloat = 16
-    /// Liquid Glass fill + specular border on the artwork.
-    var liquidGlass: Bool = true
 
     /// Used by previews and any host that has not installed a provider.
-    /// Matches the `@AppStorage` defaults the cards used.
     static let `default` = PosterChromeStyle()
+
+    /// Fixed card geometry and material. The corner-radius, Liquid Glass and
+    /// smooth-focus options were removed from Settings; every card now shares
+    /// these defaults.
+    var cornerRadius: CGFloat { 16 }
+    var liquidGlass: Bool { true }
 
     var focusOutlineWidth: CGFloat {
         focusHighlighter ? AppFocusOutline.emphasizedWidth : AppFocusOutline.width
     }
 
-    /// The focus animation, or `nil` when the user turned smooth focus off.
     var focusAnimation: Animation? {
-        smoothFocus ? .spring(response: 0.28, dampingFraction: 0.75) : nil
+        .spring(response: 0.28, dampingFraction: 0.75)
     }
 
     var shape: RoundedRectangle {
@@ -62,19 +60,10 @@ struct PosterChromeStyleProvider<Content: View>: View {
     @ViewBuilder var content: Content
 
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
 
     private var style: PosterChromeStyle {
-        PosterChromeStyle(
-            posterLabels: posterLabels,
-            smoothFocus: smoothFocus,
-            focusHighlighter: focusHighlighter,
-            cornerRadius: AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16),
-            liquidGlass: liquidGlassCards
-        )
+        PosterChromeStyle(posterLabels: posterLabels, focusHighlighter: focusHighlighter)
     }
 
     var body: some View {
@@ -188,13 +177,14 @@ extension View {
 // MARK: - Grid tiles
 
 #if os(tvOS)
-/// Poster tile for the full-width grids — Search results and the Grid Home
-/// previews — so both read as one card: art that lifts and outlines on focus,
-/// plus the two-line title/subtitle pair when poster labels are on.
+/// Poster tile for the full-width grids: Search results and the Grid Home
+/// previews. The system card style owns the whole focus treatment (lift,
+/// specular highlight, parallax, shadow, scale), so the tile draws nothing but
+/// the artwork, the watched badge and the caption underneath.
 ///
 /// Distinct from `PosterCard`, which is the row-strip card: that one also has to
 /// expand to landscape artwork, carry Continue Watching progress, and stay
-/// cheap while a whole strip of it is mounted, so it deliberately stays flatter.
+/// cheap while a whole strip of it is mounted.
 struct PosterGridCard: View {
     let meta: NuvioMeta
     var width: CGFloat = 210
@@ -203,77 +193,67 @@ struct PosterGridCard: View {
     /// Defaults to `meta.id`. Home passes a section-scoped key, since the same
     /// title can appear in more than one catalog.
     var focusValue: String? = nil
-    var retainFocusAppearance = false
     /// Pre-resolved watched state; `nil` lets the badge look it up itself.
     var isWatched: Bool? = nil
     var shouldRequestInitialFocus = false
     var onInitialFocusRequested: (() -> Void)? = nil
     var onFocus: ((NuvioMeta) -> Void)? = nil
     /// Forces the title/subtitle caption to render regardless of the user's
-    /// global poster-labels setting (used by Search's Netflix-style grid).
+    /// global poster-labels setting (used by Search's grids).
     var forceShowLabels = false
-    /// Optional directional-command hook installed on the focusable Button
-    /// itself. Container-level handlers can miss commands consumed by tvOS's
-    /// focus engine before they bubble out of a poster.
-    var onMove: ((MoveCommandDirection) -> Void)? = nil
     let action: () -> Void
 
     @FocusState private var focused: Bool
     @State private var didRequestInitialFocus = false
-    /// Published once per screen by `PosterChromeStyleProvider`, so a grid of
-    /// these registers no UserDefaults observers of its own.
+    /// Only `posterLabels` is read; the card style replaces the rest.
     @Environment(\.posterChromeStyle) private var chrome
 
-    private var showsFocusedAppearance: Bool { focused || retainFocusAppearance }
-
     var body: some View {
-        let cardContent = VStack(alignment: .leading, spacing: 12) {
-            CachedPosterArtwork(
-                urlString: meta.posterUrl,
-                preloadURLString: nil,
-                width: width,
-                height: height,
-                maximumWidth: width,
-                minimumSwapDelay: 0,
-                onPreloadFinished: {}
-            ) {
-                placeholder
-            }
-            .frame(width: width, height: height)
-            .posterTileChrome(style: chrome, isFocused: showsFocusedAppearance) {
-                if let isWatched {
-                    if isWatched { WatchedCheckmarkIcon() }
-                } else {
-                    WatchedCheckmarkBadge(meta: meta)
+        VStack(alignment: .leading, spacing: 12) {
+            Button(action: action) {
+                CachedPosterArtwork(
+                    urlString: meta.posterUrl,
+                    preloadURLString: nil,
+                    width: width,
+                    height: height,
+                    maximumWidth: width,
+                    minimumSwapDelay: 0,
+                    onPreloadFinished: {}
+                ) {
+                    placeholder
+                }
+                .frame(width: width, height: height)
+                .overlay(alignment: .topTrailing) {
+                    if let isWatched {
+                        if isWatched { WatchedCheckmarkIcon() }
+                    } else {
+                        WatchedCheckmarkBadge(meta: meta)
+                    }
                 }
             }
+            .buttonStyle(.card)
+            .focused($focused)
+            .modifier(ExternalFocusBinding(binding: externalFocus, id: focusValue ?? meta.id))
+            .titleActionsContextMenu(
+                meta: meta,
+                onOpenDetails: action
+            )
 
             if chrome.posterLabels || forceShowLabels {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(meta.name)
                         .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(showsFocusedAppearance ? .white : .white.opacity(0.78))
+                        .foregroundStyle(focused ? .white : .white.opacity(0.78))
                         .lineLimit(1)
                     Text(subtitle)
                         .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white.opacity(0.45))
+                        .foregroundStyle(.white.opacity(0.45))
                         .lineLimit(1)
                 }
                 .frame(width: width, alignment: .leading)
+                .animation(NuvioMotion.focus, value: focused)
             }
         }
-        Button(action: action) {
-            cardContent
-                .scaleEffect(showsFocusedAppearance ? 1.06 : 1.0)
-        }
-        .buttonStyle(PosterCardButtonStyle())
-        .focused($focused)
-        .modifier(ExternalFocusBinding(binding: externalFocus, id: focusValue ?? meta.id))
-        .modifier(OptionalMoveCommandHandler(handler: onMove))
-        .titleActionsContextMenu(
-            meta: meta,
-            onOpenDetails: action
-        )
         .onChange(of: focused) { _, isFocused in
             if isFocused { onFocus?(meta) }
         }
@@ -283,7 +263,6 @@ struct PosterGridCard: View {
             onInitialFocusRequested?()
             DispatchQueue.main.async { focused = true }
         }
-        .animation(chrome.focusAnimation, value: showsFocusedAppearance)
     }
 
     private var placeholder: some View {
@@ -306,25 +285,12 @@ struct PosterGridCard: View {
     }
 }
 
-private struct OptionalMoveCommandHandler: ViewModifier {
-    let handler: ((MoveCommandDirection) -> Void)?
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let handler {
-            content.onMoveCommand(perform: handler)
-        } else {
-            content
-        }
-    }
-}
 #endif
 
 struct DiscoverCard: View {
     let meta: NuvioMeta
     var externalFocus: FocusState<String?>.Binding? = nil
     var onFocusChange: ((Bool) -> Void)? = nil
-    var retainFocusAppearance = false
     let action: () -> Void
     @FocusState private var focused: Bool
     @Environment(\.posterChromeStyle) private var chrome
@@ -410,14 +376,13 @@ struct DiscoverCard: View {
     }
 
     private var showsFocusedAppearance: Bool {
-        focused || retainFocusAppearance
+        focused
     }
 }
 
 struct LibraryItemButton: View {
     let item: StremioMeta
     var externalFocus: FocusState<String?>.Binding? = nil
-    var retainFocusAppearance = false
     let action: () -> Void
 
     @FocusState private var isFocused: Bool
@@ -485,7 +450,7 @@ struct LibraryItemButton: View {
     }
 
     private var showsFocusedAppearance: Bool {
-        isFocused || retainFocusAppearance
+        isFocused
     }
 }
 
@@ -563,49 +528,3 @@ struct CollectionFolderResultCard: View {
     }
 }
 
-struct TVHomeSeeAllCard: View {
-    let title: String
-    var externalFocus: FocusState<String?>.Binding? = nil
-    let externalFocusValue: String
-    var retainFocusAppearance = false
-    let onFocus: () -> Void
-    let action: () -> Void
-
-    @FocusState private var isFocused: Bool
-    @Environment(\.posterChromeStyle) private var chrome
-
-    private var showsFocusedAppearance: Bool { isFocused || retainFocusAppearance }
-
-    var body: some View {
-        Button(action: action) {
-            // Same glass plate a portrait collection folder uses for its emoji
-            // cover, so the two tile kinds read as one material.
-            VStack(spacing: 18) {
-                Image(systemName: "rectangle.grid.3x2.fill")
-                    .font(.system(size: 48, weight: .medium))
-                Text(L10n.string("action_see_all", fallback: "See All"))
-                    .font(.system(size: 24, weight: .bold))
-                Text(title)
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(.white.opacity(0.58))
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 12)
-            }
-            .foregroundColor(.white)
-            .frame(width: TVHomeGridLayout.posterWidth, height: TVHomeGridLayout.posterHeight)
-            // Keeps its own material (no gradient border, prominent fill on
-            // focus), so only the outline, shadow and system highlight are shared.
-            .modifier(LiquidGlassSurface(cornerRadius: chrome.cornerRadius, prominent: showsFocusedAppearance))
-            .posterTileChrome(style: chrome, isFocused: showsFocusedAppearance, surface: .externalSurface)
-            .scaleEffect(showsFocusedAppearance ? 1.06 : 1)
-        }
-        .buttonStyle(PosterCardButtonStyle())
-        .focused($isFocused)
-        .modifier(ExternalFocusBinding(binding: externalFocus, id: externalFocusValue))
-        .onChange(of: isFocused) { _, focused in
-            if focused { onFocus() }
-        }
-        .animation(chrome.focusAnimation, value: showsFocusedAppearance)
-    }
-}

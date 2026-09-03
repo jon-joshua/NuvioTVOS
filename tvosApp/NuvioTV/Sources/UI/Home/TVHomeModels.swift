@@ -89,6 +89,25 @@ final class TVHomeStore: ObservableObject {
     private var loadedContentIdentity: TVHomeContentIdentity?
     private var loadingContentIdentity: TVHomeContentIdentity?
     private var loadGeneration: UInt = 0
+    /// Screen-scoped work keyed by purpose ("catalog", "collections", ...).
+    /// Owned here rather than by `.task` modifiers on the Home view: pushing
+    /// Details on the navigation stack fires Home's `onDisappear`, which would
+    /// cancel every view-owned task and rerun it on pop, reloading Home on
+    /// every return.
+    private var tasks: [String: Task<Void, Never>] = [:]
+
+    /// Runs `operation` under `key`, cancelling whatever ran under it before.
+    func run(_ key: String, _ operation: @escaping @MainActor () async -> Void) {
+        tasks[key]?.cancel()
+        tasks[key] = Task { @MainActor in
+            await operation()
+        }
+    }
+
+    func cancel(_ key: String) {
+        tasks[key]?.cancel()
+        tasks[key] = nil
+    }
 
     func isLoaded(for identity: TVHomeContentIdentity) -> Bool {
         hasLoaded && loadedContentIdentity == identity
@@ -142,6 +161,8 @@ final class TVHomeStore: ObservableObject {
     }
 
     func reset() {
+        for task in tasks.values { task.cancel() }
+        tasks.removeAll()
         loadGeneration &+= 1
         sections = []
         hero = nil
@@ -157,37 +178,6 @@ final class TVHomeStore: ObservableObject {
 // cards already visible ahead of focus to give network requests the same runway.
 let TVHomeRowPrefetchThreshold = 12
 
-enum TVHomeGridLayout {
-    static let columns = 7
-    static let rows = 3
-    static let previewItemCount = columns * rows - 1
-    // Same poster geometry as the See All catalog this grid links into
-    // (`CollectionFolderGridMetrics`), so a title is the same size on both.
-    static let posterWidth: CGFloat = 210
-    static let posterHeight: CGFloat = 315
-    static let itemSpacing: CGFloat = 28
-    static let sectionSpacing: CGFloat = 54
-    static let heroPageLimit = 7
-    static let seeAllID = "__see_all__"
-
-    static var gridColumns: [GridItem] {
-        Array(
-            repeating: GridItem(.fixed(posterWidth), spacing: itemSpacing, alignment: .top),
-            count: columns
-        )
-    }
-
-    static func isWatched(_ item: NuvioMeta, watchedTitleKeys: Set<String>) -> Bool? {
-        let type = item.type.lowercased()
-        let titleWatched = !watchedTitleKeys.isDisjoint(
-            with: WatchedStore.catalogTitleIdentityKeys(for: item)
-        )
-        guard ["series", "tv", "show", "tvshow"].contains(type) else {
-            return titleWatched
-        }
-        return titleWatched ? true : nil
-    }
-}
 
 /// Shared Home vertical rhythm for catalog *and* collection folder rows.
 enum TVHomeLayout {

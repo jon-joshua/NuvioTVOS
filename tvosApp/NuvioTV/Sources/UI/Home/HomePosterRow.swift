@@ -11,13 +11,12 @@ import SwiftUI
 struct TVLoadingCatalogRow: View {
     let title: String
 
-    @AppStorage(SettingsKey.homeLayout) private var homeLayout = "Modern"
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.liquidGlassCards) private var liquidGlassCards = true
+    private let liquidGlassCards = true
 
-    private var cardWidth: CGFloat { homeLayout == "Compact" ? 170 : 210 }
-    private var cardHeight: CGFloat { homeLayout == "Compact" ? 255 : 315 }
-    private var cardSpacing: CGFloat { homeLayout == "Compact" ? 22 : 28 }
+    private let cardWidth: CGFloat = 210
+    private let cardHeight: CGFloat = 315
+    private let cardSpacing: CGFloat = 28
 
     /// Matches `HomePosterRow.stripHeight`, so swapping a skeleton for the real
     /// row changes nothing about the rows below it.
@@ -77,13 +76,6 @@ struct HomePosterRow: View {
     let initialFocusCardKey: String?
     let landscapeFocusedId: String?
     var externalFocus: FocusState<String?>.Binding? = nil
-    /// While non-nil, every card except this key is unfocusable — the Settings
-    /// sidebar trick. Used during overlay-dismiss focus restoration so the
-    /// engine can only land on the saved card, never flashing the first one.
-    var restrictFocusToCardKey: String? = nil
-    /// Separate from focus restriction so row-entry locks do not draw a focus
-    /// outline; only overlay restoration retains focused appearance.
-    var retainFocusAppearanceForCardKey: String? = nil
     /// Suppresses the one focus/layout animation caused by returning to Home
     /// from another tab. Normal left/right focus animation remains enabled.
     var suppressFocusAnimations: Bool = false
@@ -102,17 +94,16 @@ struct HomePosterRow: View {
     /// Meta id of the card pinned to the gutter — the `ForEach` identity the
     /// scroll view positions on. Nil until the row has laid out once.
     @State private var leadingCardID: String?
-    @AppStorage(SettingsKey.homeLayout) private var homeLayout = "Modern"
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     private var compactPosterWidth: CGFloat {
-        homeLayout == "Compact" ? 170 : 210
+        210
     }
 
     private var rowSpacing: CGFloat {
-        homeLayout == "Compact" ? 22 : 28
+        28
     }
 
     private var rowPrefix: String { "\(id)\u{1}" }
@@ -145,7 +136,7 @@ struct HomePosterRow: View {
 
     // Card height (315) + vertical breathing room for the focus border/shadow.
     private var stripHeight: CGFloat {
-        let imageHeight: CGFloat = homeLayout == "Compact" ? 255 : 315
+        let imageHeight: CGFloat = 315
         return imageHeight + (posterLabels ? 48 : 0) + TVHomeLayout.stripVerticalPadding * 2
     }
 
@@ -190,10 +181,8 @@ struct HomePosterRow: View {
         // A card that must take focus has to exist first (see `pinIfInRow`).
         .onAppear {
             pinIfInRow(initialFocusCardKey)
-            pinIfInRow(restrictFocusToCardKey)
         }
         .onChange(of: initialFocusCardKey) { _, key in pinIfInRow(key) }
-        .onChange(of: restrictFocusToCardKey) { _, key in pinIfInRow(key) }
     }
 
     private var cardStrip: some View {
@@ -226,7 +215,7 @@ struct HomePosterRow: View {
         let progressItem = progressByItemId[item.id]
         PosterCard(
             meta: item,
-            isLandscape: homeLayout == "Modern" && landscapeFocusedId == cardKey,
+            isLandscape: landscapeFocusedId == cardKey,
             continueProgress: progressItem?.progress,
             continueRemainingText: progressItem?.remainingText,
             continueEpisodeText: progressItem?.episodeLabel,
@@ -252,11 +241,9 @@ struct HomePosterRow: View {
             onRemoveFromContinueWatching: ((id == TVHomeSection.continueWatchingId || id == TVHomeSection.upcomingId) && progressItem != nil) ? {
                 if let p = progressItem { onRemoveFromContinueWatching?(p) }
             } : nil,
-            layoutMode: homeLayout,
             showPosterLabels: posterLabels,
             smoothFocusAnimations: cardFocusAnimations,
             focusHighlighterEnabled: focusHighlighter,
-            retainFocusAppearance: retainFocusAppearanceForCardKey == cardKey,
             allowsFocus: true,
             isWatched: isWatched(item)
         ) {
@@ -265,10 +252,7 @@ struct HomePosterRow: View {
         // `PosterCard.==` ignores the closures built above, so an unchanged
         // card skips its body entirely when the row re-evaluates.
         .equatable()
-        .disabled(
-            (restrictFocusToCardKey != nil && restrictFocusToCardKey != cardKey)
-                || (!isRowFocused && index != pinned)
-        )
+        .disabled(!isRowFocused && index != pinned)
     }
 
     /// Pin the focused card, then let the host react (paging, backdrop, store).
@@ -305,17 +289,6 @@ struct HomePosterRow: View {
 // vertical window to swap lightweight shells for real poster cards.
 extension HomePosterRow: Equatable {
     static func == (lhs: HomePosterRow, rhs: HomePosterRow) -> Bool {
-        let lhsTargetInRow = lhs.restrictFocusToCardKey?.hasPrefix("\(lhs.id)\u{1}") == true
-        let rhsTargetInRow = rhs.restrictFocusToCardKey?.hasPrefix("\(rhs.id)\u{1}") == true
-        let restrictEqual = (lhs.restrictFocusToCardKey != nil) == (rhs.restrictFocusToCardKey != nil)
-            && (lhsTargetInRow == rhsTargetInRow)
-            && (!lhsTargetInRow || lhs.restrictFocusToCardKey == rhs.restrictFocusToCardKey)
-
-        let lhsRetainInRow = lhs.retainFocusAppearanceForCardKey?.hasPrefix("\(lhs.id)\u{1}") == true
-        let rhsRetainInRow = rhs.retainFocusAppearanceForCardKey?.hasPrefix("\(rhs.id)\u{1}") == true
-        let retainEqual = (lhsRetainInRow == rhsRetainInRow)
-            && (!lhsRetainInRow || lhs.retainFocusAppearanceForCardKey == rhs.retainFocusAppearanceForCardKey)
-
         return lhs.id == rhs.id
             && lhs.title == rhs.title
             && lhs.horizontalEdgeInset == rhs.horizontalEdgeInset
@@ -328,8 +301,6 @@ extension HomePosterRow: Equatable {
             && lhs.resetGeneration == rhs.resetGeneration
             && lhs.initialFocusCardKey == rhs.initialFocusCardKey
             && lhs.landscapeFocusedId == rhs.landscapeFocusedId
-            && restrictEqual
-            && retainEqual
             && lhs.suppressFocusAnimations == rhs.suppressFocusAnimations
             && lhs.isRowFocused == rhs.isRowFocused
     }

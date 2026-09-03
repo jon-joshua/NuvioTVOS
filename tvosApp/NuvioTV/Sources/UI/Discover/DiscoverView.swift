@@ -33,11 +33,6 @@ struct DiscoverSection: View {
     /// `focusedCardID` to nil while the next lazy cell materializes, and
     /// arming instantly on that blip bounces focus back to the previous card.
     @State private var restoreArmTask: Task<Void, Never>?
-    /// Card to actively re-focus once the Details overlay dismisses; captured
-    /// when the tab view gets disabled (overlay up), consumed on re-enable.
-    @State private var overlayRestoreCardID: String?
-    @State private var overlayRestoreGeneration = 0
-    @Environment(\.isEnabled) private var isEnabled
     @Binding private var parentTransitionActive: Bool
     @AppStorage(SettingsKey.hideUnreleased) private var hideUnreleased = false
 
@@ -60,7 +55,6 @@ struct DiscoverSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             filterBar
-                .disabled(overlayRestoreCardID != nil)
                 .zIndex(1)
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -72,11 +66,9 @@ struct DiscoverSection: View {
                 restoreArmTask?.cancel()
                 lastFocusedCardID = newValue
                 shouldRestoreFocus = false
-                // Restoration complete -- lift the focus restriction.
-                if isEnabled, newValue == overlayRestoreCardID {
-                    overlayRestoreCardID = nil
-                    parentTransitionActive = false
-                }
+                // Focus is back on a card (natively, after the pushed Details
+                // popped), so the host keyboard may take focus again.
+                parentTransitionActive = false
             } else if lastFocusedCardID != nil {
                 scheduleRestoreArm()
             }
@@ -94,18 +86,6 @@ struct DiscoverSection: View {
                 onFocusExit?()
             }
         }
-        // Overlay dismissal re-places focus geometrically without consulting
-        // `defaultFocus`. While `overlayRestoreCardID` is set every other card
-        // is unfocusable, so the engine can only land back on the saved card
-        // -- no scroll-to-top flash. See TVHomeView for the full story.
-        .onChange(of: isEnabled) { _, enabled in
-            if !enabled {
-                overlayRestoreGeneration &+= 1
-                overlayRestoreCardID = focusedCardID ?? lastFocusedCardID
-            } else if let target = overlayRestoreCardID {
-                restoreOverlayFocus(to: target, generation: overlayRestoreGeneration)
-            }
-        }
     }
 
     /// Arms the restore flag only after focus has stayed off the cards long
@@ -118,22 +98,6 @@ struct DiscoverSection: View {
             try? await Task.sleep(nanoseconds: 150_000_000)
             guard !Task.isCancelled, focusedCardID == nil else { return }
             shouldRestoreFocus = true
-        }
-    }
-
-    private func restoreOverlayFocus(to target: String, generation: Int) {
-        for delay in [0.12, 0.45] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                if overlayRestoreGeneration == generation, overlayRestoreCardID == target {
-                    focusedCardID = target
-                }
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if overlayRestoreGeneration == generation, overlayRestoreCardID == target {
-                overlayRestoreCardID = nil
-                parentTransitionActive = false
-            }
         }
     }
 
@@ -224,15 +188,12 @@ struct DiscoverSection: View {
                     DiscoverCard(
                         meta: item,
                         externalFocus: $focusedCardID,
-                        onFocusChange: { updateDiscoverFocus("card:\(item.id)", isFocused: $0) },
-                        retainFocusAppearance: overlayRestoreCardID == item.id
+                        onFocusChange: { updateDiscoverFocus("card:\(item.id)", isFocused: $0) }
                     ) {
                         parentTransitionActive = true
-                        overlayRestoreCardID = item.id
                         lastFocusedCardID = item.id
                         onContentClick(item.id, item.type)
                     }
-                    .disabled(overlayRestoreCardID != nil && overlayRestoreCardID != item.id)
                     .onAppear { viewModel.loadMoreIfNeeded(currentItem: item) }
                 }
             }

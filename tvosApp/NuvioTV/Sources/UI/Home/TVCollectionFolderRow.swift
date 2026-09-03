@@ -10,43 +10,42 @@ import OSLog
 /// All shapes share the same poster height; width varies by `tileShape`
 /// (poster / square / landscape) so mixed shapes align on one baseline.
 private enum TVCollectionFolderCardLayout {
-    static func cardHeight(layoutMode: String) -> CGFloat {
-        layoutMode == "Compact" ? 255 : 315
+    static func cardHeight() -> CGFloat {
+        315
     }
 
     /// Width from fixed height × shape aspect ratio.
     /// Matches Settings `CollectionTileShapePreview` and keeps landscape/square
     /// the same height as portrait — only wider.
-    static func cardWidth(shape: CollectionTileShape, layoutMode: String) -> CGFloat {
-        let height = cardHeight(layoutMode: layoutMode)
+    static func cardWidth(shape: CollectionTileShape) -> CGFloat {
+        let height = cardHeight()
         switch shape {
         case .poster:
             // Match catalog `PosterCard` portrait width exactly.
-            return layoutMode == "Compact" ? 170 : 210
+            return 210
         case .landscape:
             // Match PosterCard's focused Home landscape width exactly.
-            return layoutMode == "Compact" ? (height * CGFloat(shape.aspectRatio)).rounded() : 560
+            return 560
         case .square:
             return (height * CGFloat(shape.aspectRatio)).rounded()
         }
     }
 
-    static func rowSpacing(layoutMode: String) -> CGFloat {
-        layoutMode == "Compact" ? 22 : 28
+    static func rowSpacing() -> CGFloat {
+        28
     }
 
     /// Leading-edge offset of the card at `index` (sum of prior widths + gaps).
     static func scrollOffset(
         to index: Int,
-        folders: [TVCollectionFolderItem],
-        layoutMode: String
+        folders: [TVCollectionFolderItem]
     ) -> CGFloat {
         guard index > 0 else { return 0 }
-        let spacing = rowSpacing(layoutMode: layoutMode)
+        let spacing = rowSpacing()
         var offset: CGFloat = 0
         let end = min(index, folders.count)
         for i in 0..<end {
-            offset += cardWidth(shape: folders[i].tileShape, layoutMode: layoutMode) + spacing
+            offset += cardWidth(shape: folders[i].tileShape) + spacing
         }
         return offset
     }
@@ -66,8 +65,6 @@ struct TVCollectionFolderRow: View {
     let onScrollIndexChange: (Int) -> Void
     let initialFocusCardKey: String?
     var externalFocus: FocusState<String?>.Binding? = nil
-    var restrictFocusToCardKey: String? = nil
-    var retainFocusAppearanceForCardKey: String? = nil
     var suppressFocusAnimations = false
     var isRowFocused = false
     let onInitialFocusRequested: () -> Void
@@ -75,9 +72,8 @@ struct TVCollectionFolderRow: View {
     let onSelect: (TVCollectionFolderItem) -> Void
 
     @State private var scrollIndex: Int?
-    @AppStorage(SettingsKey.homeLayout) private var homeLayout = "Modern"
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    @AppStorage(SettingsKey.smoothFocus) private var smoothFocus = true
+    private let smoothFocus = true
     @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     private var effectiveScrollIndex: Int {
@@ -87,11 +83,11 @@ struct TVCollectionFolderRow: View {
     }
 
     private var rowSpacing: CGFloat {
-        TVCollectionFolderCardLayout.rowSpacing(layoutMode: homeLayout)
+        TVCollectionFolderCardLayout.rowSpacing()
     }
 
     private var imageHeight: CGFloat {
-        TVCollectionFolderCardLayout.cardHeight(layoutMode: homeLayout)
+        TVCollectionFolderCardLayout.cardHeight()
     }
 
     /// Same strip math as `TVCatalogRow`.
@@ -108,31 +104,28 @@ struct TVCollectionFolderRow: View {
     /// four cards behind so the next focus target already exists before tvOS
     /// starts a horizontal move.
     private func materializedCardIndices(
-        stripWidth: CGFloat,
-        layoutMode: String
+        stripWidth: CGFloat
     ) -> [Int] {
         guard !folders.isEmpty else { return [] }
 
         let focusIndex = effectiveScrollIndex
         var lowerBound = max(0, focusIndex - 4)
         var upperBound = focusIndex
-        let spacing = TVCollectionFolderCardLayout.rowSpacing(layoutMode: layoutMode)
+        let spacing = TVCollectionFolderCardLayout.rowSpacing()
         var coveredWidth: CGFloat = 0
 
         for index in focusIndex..<folders.count {
             coveredWidth += TVCollectionFolderCardLayout.cardWidth(
-                shape: folders[index].tileShape,
-                layoutMode: layoutMode
+                shape: folders[index].tileShape
             ) + spacing
             upperBound = index
             if coveredWidth >= stripWidth { break }
         }
 
-        // A restored focus target must be mounted even if the persisted scroll
+        // The initial focus target must be mounted even if the persisted scroll
         // index has not caught up with it yet.
         let rowPrefix = "\(id)\u{1}"
-        for key in [initialFocusCardKey, restrictFocusToCardKey] {
-            guard let key, key.hasPrefix(rowPrefix) else { continue }
+        if let key = initialFocusCardKey, key.hasPrefix(rowPrefix) {
             let folderID = String(key.dropFirst(rowPrefix.count))
             if let targetIndex = folders.firstIndex(where: { $0.id == folderID }) {
                 lowerBound = min(lowerBound, targetIndex)
@@ -171,19 +164,16 @@ struct TVCollectionFolderRow: View {
     private var cardStrip: some View {
         GeometryReader { geo in
             let stripWidth = max(1920, geo.size.width + horizontalEdgeInset * 2)
-            let rowHomeLayout = homeLayout
             let rowPosterLabels = posterLabels
             let rowSmoothFocus = smoothFocus
             let rowFocusHighlighter = focusHighlighter
-            let rowSpacing = TVCollectionFolderCardLayout.rowSpacing(layoutMode: rowHomeLayout)
+            let rowSpacing = TVCollectionFolderCardLayout.rowSpacing()
             let scrollX = TVCollectionFolderCardLayout.scrollOffset(
                 to: effectiveScrollIndex,
-                folders: folders,
-                layoutMode: rowHomeLayout
+                folders: folders
             )
             let materializedIndices = materializedCardIndices(
-                stripWidth: stripWidth,
-                layoutMode: rowHomeLayout
+                stripWidth: stripWidth
             )
 
             HStack(alignment: .top, spacing: rowSpacing) {
@@ -204,26 +194,20 @@ struct TVCollectionFolderRow: View {
                             }
                             onFocus(folder)
                         },
-                        layoutMode: rowHomeLayout,
                         showPosterLabels: rowPosterLabels,
                         smoothFocusAnimations: rowSmoothFocus,
                         focusHighlighterEnabled: rowFocusHighlighter,
-                        retainFocusAppearance: retainFocusAppearanceForCardKey == cardKey,
                         allowsFocus: true,
                         onSelect: { onSelect(folder) }
                     )
-                    .disabled(
-                        (restrictFocusToCardKey != nil && restrictFocusToCardKey != cardKey)
-                            || (!isRowFocused && index != effectiveScrollIndex)
-                    )
+                    .disabled(!isRowFocused && index != effectiveScrollIndex)
                 }
             }
             .padding(
                 .leading,
                 TVCollectionFolderCardLayout.scrollOffset(
                     to: materializedIndices.first ?? 0,
-                    folders: folders,
-                    layoutMode: rowHomeLayout
+                    folders: folders
                 )
             )
             .padding(.vertical, TVHomeLayout.stripVerticalPadding)
@@ -254,16 +238,6 @@ struct TVCollectionFolderRow: View {
 // vertical window to swap lightweight shells for real folder cards.
 extension TVCollectionFolderRow: Equatable {
     static func == (lhs: TVCollectionFolderRow, rhs: TVCollectionFolderRow) -> Bool {
-        let lhsRestrictInRow = lhs.restrictFocusToCardKey?.hasPrefix("\(lhs.id)\u{1}") == true
-        let rhsRestrictInRow = rhs.restrictFocusToCardKey?.hasPrefix("\(rhs.id)\u{1}") == true
-        let restrictEqual = (lhsRestrictInRow == rhsRestrictInRow)
-            && (!lhsRestrictInRow || lhs.restrictFocusToCardKey == rhs.restrictFocusToCardKey)
-
-        let lhsRetainInRow = lhs.retainFocusAppearanceForCardKey?.hasPrefix("\(lhs.id)\u{1}") == true
-        let rhsRetainInRow = rhs.retainFocusAppearanceForCardKey?.hasPrefix("\(rhs.id)\u{1}") == true
-        let retainEqual = (lhsRetainInRow == rhsRetainInRow)
-            && (!lhsRetainInRow || lhs.retainFocusAppearanceForCardKey == rhs.retainFocusAppearanceForCardKey)
-
         return lhs.id == rhs.id
             && lhs.title == rhs.title
             && lhs.horizontalEdgeInset == rhs.horizontalEdgeInset
@@ -271,8 +245,6 @@ extension TVCollectionFolderRow: Equatable {
             && lhs.folders == rhs.folders
             && lhs.initialScrollIndex == rhs.initialScrollIndex
             && lhs.initialFocusCardKey == rhs.initialFocusCardKey
-            && restrictEqual
-            && retainEqual
             && lhs.suppressFocusAnimations == rhs.suppressFocusAnimations
             && lhs.isRowFocused == rhs.isRowFocused
     }
@@ -287,27 +259,25 @@ private struct TVCollectionFolderCard: View {
     var externalFocus: FocusState<String?>.Binding? = nil
     var externalFocusValue: String? = nil
     var onFocus: (() -> Void)? = nil
-    var layoutMode: String = "Modern"
     var showPosterLabels: Bool = false
     var smoothFocusAnimations: Bool = true
     var focusHighlighterEnabled: Bool = false
-    var retainFocusAppearance: Bool = false
     var allowsFocus = true
     let onSelect: () -> Void
 
     @FocusState private var isFocused: Bool
     @State private var didRequestInitialFocus = false
-    @AppStorage(SettingsKey.cardCornerRadius) private var cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
+    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
 
-    private var showFocus: Bool { isFocused || retainFocusAppearance }
+    private var showFocus: Bool { isFocused }
 
     /// All shapes share the same height; landscape/square only widen.
     private var cardWidth: CGFloat {
-        TVCollectionFolderCardLayout.cardWidth(shape: folder.tileShape, layoutMode: layoutMode)
+        TVCollectionFolderCardLayout.cardWidth(shape: folder.tileShape)
     }
 
     private var cardHeight: CGFloat {
-        TVCollectionFolderCardLayout.cardHeight(layoutMode: layoutMode)
+        TVCollectionFolderCardLayout.cardHeight()
     }
 
     /// Keep the focus surface identical to the visible card, matching normal

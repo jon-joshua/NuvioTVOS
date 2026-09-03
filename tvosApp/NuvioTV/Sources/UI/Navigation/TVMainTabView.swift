@@ -7,13 +7,12 @@ struct TVMainTabView: View {
     @Binding var selectedTab: TVTab
     let activeProfile: Profile?
     @ObservedObject var searchViewModel: SearchViewModel
-    @ObservedObject var netflixSearchViewModel: NetflixSearchViewModel
     @ObservedObject var libraryViewModel: LibraryViewModel
     @ObservedObject var homeStore: TVHomeStore
     let homeCatalogRevision: UInt
     let homeCollectionsRevision: UInt
-    let isFullScreenOverlayPresented: Bool
-    let detailsDidDisappearGeneration: UInt
+    /// True while a pushed screen or the player covers the tab view.
+    let isCovered: Bool
     let accountEmail: String?
     let isAuthenticated: Bool
     let sessionNeedsReauthentication: Bool
@@ -34,16 +33,15 @@ struct TVMainTabView: View {
     var onPlayContinueWatchingManually: ((ContinueWatchingItem) -> Void)? = nil
     var onStartContinueWatchingFromBeginning: ((ContinueWatchingItem) -> Void)? = nil
     var onRemoveFromContinueWatching: ((ContinueWatchingItem) -> Void)? = nil
-    let onLongPressCard: (NuvioMeta) -> Void
+    var onLongPressCard: ((NuvioMeta) -> Void)? = nil
     /// Long press on a Continue Watching card, which gets its own resume-centric
     /// menu instead of the generic title actions.
-    let onLongPressContinueWatching: (ContinueWatchingItem) -> Void
+    var onLongPressContinueWatching: ((ContinueWatchingItem) -> Void)? = nil
     let onOpenCloudLibrary: () -> Void
     let onPlayCloudFile: (URL, NuvioMeta) -> Void
     @AppStorage(SettingsKey.amoled) private var amoled = false
     @AppStorage(SettingsKey.bodyColor) private var bodyColor = SettingsBackground.charcoal.rawValue
     @AppStorage(SettingsKey.discoverLocation) private var discoverLocation = "Search"
-    @AppStorage(SettingsKey.searchStyle) private var searchStyle = "Netflix"
     @AppStorage(SettingsKey.profileName) private var settingsProfileName = "Nuvio User"
     @StateObject private var profileTabAvatar = ProfileTabAvatarRenderer()
     @State private var showingReauthSheet = false
@@ -178,8 +176,7 @@ struct TVMainTabView: View {
             store: homeStore,
             repository: CinemetaCatalogRepository(),
             isActive: selectedTab == .home,
-            isFullScreenOverlayPresented: isFullScreenOverlayPresented,
-            detailsDidDisappearGeneration: detailsDidDisappearGeneration,
+            isCovered: isCovered,
             isProfileSwitching: isProfileSwitching,
             contentIdentity: TVHomeContentIdentity(
                 profileId: activeProfile?.id ?? "none",
@@ -233,23 +230,13 @@ struct TVMainTabView: View {
         }
     }
 
-    /// Search screen chosen in Settings → Layout & Discovery → Search Style.
-    @ViewBuilder
+    /// The system-keyboard search over a full-width poster grid.
     private var searchTab: some View {
-        if searchStyle == "Classic" {
-            SearchView(
-                viewModel: searchViewModel,
-                showDiscover: discoverLocation == "Search",
-                onContentClick: onNavigateToDetails,
-                onLongPress: onLongPressCard
-            )
-        } else {
-            NetflixSearchView(
-                viewModel: netflixSearchViewModel,
-                showDiscover: discoverLocation == "Search",
-                onContentClick: onNavigateToDetails,
-                onLongPress: onLongPressCard
-            )
-        }
+        SearchView(
+            viewModel: searchViewModel,
+            showDiscover: discoverLocation == "Search",
+            onContentClick: onNavigateToDetails,
+            onLongPress: onLongPressCard
+        )
     }
 }
