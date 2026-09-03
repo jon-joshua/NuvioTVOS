@@ -74,9 +74,6 @@ final class PictureInPictureManager: NSObject, ObservableObject {
 
     var isRestoringUIInProgress: Bool { isRestoringUI }
 
-    /// Invoked when PiP begins so the active full-screen PlayerView can dismiss to the background.
-    var onDidStartPiP: (() -> Void)?
-
     /// Invoked when PiP is closed by the user (via X button) without restoring full-screen UI.
     var onDidStopPiPWithoutRestoring: (() -> Void)?
 
@@ -251,7 +248,6 @@ extension PictureInPictureManager: @preconcurrency AVPictureInPictureControllerD
         print("[PictureInPicture] didStartPictureInPicture")
         isPictureInPictureActive = true
         activeAetherController?.engine.pictureInPictureActive = true
-        onDidStartPiP?()
     }
 
     func pictureInPictureController(
@@ -285,8 +281,8 @@ extension PictureInPictureManager: @preconcurrency AVPictureInPictureControllerD
 
     /// Called by the mounted full-screen Aether surface. AVKit's restore
     /// completion must wait until this rebind has happened; acknowledging it
-    /// as soon as `activeScreen` changes can let AVKit tear down PiP while the
-    /// new SwiftUI hierarchy still owns an empty surface.
+    /// as soon as the player cover is requested can let AVKit tear down PiP
+    /// while the new SwiftUI hierarchy still owns an empty surface.
     func fullscreenSurfaceDidRebind() {
         guard isRestoringUI else { return }
         restoreSurfaceReady = true

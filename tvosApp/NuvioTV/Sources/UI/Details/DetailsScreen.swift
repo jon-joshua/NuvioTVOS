@@ -23,9 +23,12 @@ struct DetailsScreen: View {
     var onOpenProduction: ((MetaCompany) -> Void)? = nil
     /// Open the movies and series associated with a TMDB person.
     var onOpenPerson: ((TmdbPersonMetadata) -> Void)? = nil
-    let initiallyPresentStreamPicker: Bool
-    let initialStreamPickerEpisode: NuvioVideo?
-    let onInitialStreamPickerPresented: (() -> Void)?
+    /// A request to raise the stream picker for this title (manual play from a
+    /// Continue Watching card, or a stream that never started). The screen
+    /// stays mounted across those flows, so requests are token-driven rather
+    /// than a one-shot flag consumed on first appear.
+    let streamPickerRequest: StreamPickerRequest?
+    let onStreamPickerRequestConsumed: (() -> Void)?
 
     @StateObject private var viewModel: DetailsViewModel
     @State private var isStreamPickerPresented = false
@@ -36,7 +39,16 @@ struct DetailsScreen: View {
     /// The episode a stream is being picked for (nil for movies); drives the
     /// season/episode header in the stream picker.
     @State private var pendingEpisode: NuvioVideo?
-    @State private var didHandleInitialStreamPicker = false
+    /// Chosen in the stream picker, played once its cover has fully dismissed:
+    /// the player is its own presentation and UIKit drops one that starts
+    /// while another is still animating out.
+    @State private var pendingStreamSelection: (stream: NuvioStream, player: ExternalPlayer?)?
+    @State private var handledStreamPickerRequestToken: UUID?
+    /// Whether the first `onAppear` (the one that loads) has happened. Later
+    /// appearances are returns from the player cover or a pushed child, which
+    /// only resume the work the disappearance cancelled.
+    @State private var didLoadOnce = false
+    @State private var isOnScreen = false
     @State private var expandedComment: TraktCommentReview?
     /// Set while an episode card's context menu is up. tvOS hands the Menu press
     /// that dismisses the menu to this screen as well, and without this the
@@ -62,9 +74,8 @@ struct DetailsScreen: View {
         id: String,
         type: String,
         repository: CatalogRepository,
-        initiallyPresentStreamPicker: Bool = false,
-        initialStreamPickerEpisode: NuvioVideo? = nil,
-        onInitialStreamPickerPresented: (() -> Void)? = nil,
+        streamPickerRequest: StreamPickerRequest? = nil,
+        onStreamPickerRequestConsumed: (() -> Void)? = nil,
         onPlayClick: @escaping (String, [String: String], NuvioMeta, String, [NuvioSubtitle], NuvioVideo?, [NuvioVideo], ExternalPlayer?) -> Void,
         onBack: @escaping () -> Void,
         onOpenTitle: ((String, String) -> Void)? = nil,
@@ -78,9 +89,8 @@ struct DetailsScreen: View {
         self.onOpenTitle = onOpenTitle
         self.onOpenProduction = onOpenProduction
         self.onOpenPerson = onOpenPerson
-        self.initiallyPresentStreamPicker = initiallyPresentStreamPicker
-        self.initialStreamPickerEpisode = initialStreamPickerEpisode
-        self.onInitialStreamPickerPresented = onInitialStreamPickerPresented
+        self.streamPickerRequest = streamPickerRequest
+        self.onStreamPickerRequestConsumed = onStreamPickerRequestConsumed
         _viewModel = StateObject(wrappedValue: DetailsViewModel(repository: repository))
         TVHomeDebugTrace.log("details.init id=\(id) type=\(type)")
     }
@@ -150,10 +160,12 @@ struct DetailsScreen: View {
                     },
                     onBack: handleBack
                 )
-                // While the stream picker is open it sits on top as a full-screen
-                // overlay; disable the details content so the focus engine can't
-                // route focus to the (hidden) buttons behind it.
-                .disabled(isStreamPickerPresented || expandedComment != nil || isSmartPlaybackPending || isResolvingDebrid || isPreparingPlayback)
+                // In-place overlays (comment, loaders) cover this content, so
+                // keep the focus engine off the controls behind them. The
+                // stream picker is its own presentation and needs no such lock;
+                // disabling for it is what stopped tvOS restoring focus to the
+                // episode the picker was opened from.
+                .disabled(expandedComment != nil || isSmartPlaybackPending || isResolvingDebrid || isPreparingPlayback)
                 #else
                 MobileDetailsContent(
                     uiState: viewModel.uiState,
@@ -200,7 +212,7 @@ struct DetailsScreen: View {
         // this overlay inside the details screen's vertical ScrollView ancestry
         // lets tvOS apply focus-visibility corrections to the shared host,
         // occasionally translating the filters and stream panel below screen.
-        .fullScreenCover(isPresented: $isStreamPickerPresented) {
+        .fullScreenCover(isPresented: $isStreamPickerPresented, onDismiss: flushPendingStreamSelection) {
             if let meta = viewModel.uiState.meta {
                 TvStreamPickerOverlay(
                     meta: meta,
@@ -213,9 +225,11 @@ struct DetailsScreen: View {
                     includeDebrid: DebridResolver(store: ProfileSettings.current).isEnabled,
                     isResolvingDebrid: isResolvingDebrid,
                     onSelect: { stream, player in
-                        isStreamPickerPresented = false
+                        // Played from `onDismiss`, once this cover is gone and
+                        // the player's own cover can be presented.
+                        pendingStreamSelection = (stream, player)
                         isPreparingPlayback = true
-                        playStream(stream, meta: meta, player: player)
+                        isStreamPickerPresented = false
                     },
                     onDismiss: {
                         isStreamPickerPresented = false
@@ -260,21 +274,46 @@ struct DetailsScreen: View {
         }
         .onChange(of: viewModel.uiState.isLoading) { _, isLoading in
             if !isLoading {
-                presentInitialStreamPickerIfNeeded()
+                presentRequestedStreamPickerIfNeeded()
             }
         }
+        .onChange(of: streamPickerRequest?.token, initial: true) { _, _ in
+            presentRequestedStreamPickerIfNeeded()
+        }
+        // Fires on the first push and again whenever the player cover or a
+        // pushed child goes away. Only the first appearance loads; the rest
+        // resume what the matching disappearance cancelled.
         .onAppear {
+            isOnScreen = true
             isSmartPlaybackPending = false
             isResolvingDebrid = false
             isPreparingPlayback = false
-            TVHomeDebugTrace.log("details.appear id=\(id) type=\(type)")
-            viewModel.loadDetails(id: id, type: type)
-            presentInitialStreamPickerIfNeeded()
+            if didLoadOnce {
+                TVHomeDebugTrace.log("details.reappear id=\(id) type=\(type)")
+                viewModel.resumeAfterCover()
+            } else {
+                didLoadOnce = true
+                TVHomeDebugTrace.log("details.appear id=\(id) type=\(type)")
+                viewModel.loadDetails(id: id, type: type)
+            }
         }
         .onDisappear {
+            isOnScreen = false
             TVHomeDebugTrace.log("details.disappear id=\(id) type=\(type)")
             viewModel.cancelAllTasks()
         }
+        .environment(\.detailsIsOnScreen, isOnScreen)
+    }
+
+    /// Plays the stream chosen in the picker once its cover has dismissed.
+    private func flushPendingStreamSelection() {
+        guard let selection = pendingStreamSelection else { return }
+        pendingStreamSelection = nil
+        guard let meta = viewModel.uiState.meta else {
+            isPreparingPlayback = false
+            return
+        }
+        playStream(selection.stream, meta: meta, player: selection.player)
     }
 
     /// Stop Details work before asking the parent to remove this screen.
@@ -286,20 +325,21 @@ struct DetailsScreen: View {
         onBack()
     }
 
-    private func presentInitialStreamPickerIfNeeded() {
-        guard initiallyPresentStreamPicker,
-              !didHandleInitialStreamPicker,
+    private func presentRequestedStreamPickerIfNeeded() {
+        guard let request = streamPickerRequest,
+              request.detailsKey == "\(type):\(id)",
+              request.token != handledStreamPickerRequestToken,
               !viewModel.uiState.isLoading,
               let meta = viewModel.uiState.meta else { return }
 
-        didHandleInitialStreamPicker = true
-        onInitialStreamPickerPresented?()
+        handledStreamPickerRequestToken = request.token
+        onStreamPickerRequestConsumed?()
         isSmartPlaybackPending = false
         // Prefer the entry from the guide this screen just loaded. A Continue
         // Watching card carries no episode guide, so it can only name the season
         // and episode — and the player queues the next episode by matching ids,
         // which a stand-in entry would not satisfy.
-        let requestedEpisode = initialStreamPickerEpisode.map { requested in
+        let requestedEpisode = request.episode.map { requested in
             (meta.videos ?? []).first {
                 $0.season == requested.season && $0.episode == requested.episode
             } ?? requested
@@ -1893,18 +1933,22 @@ struct TvDetailsContent: View {
     @State private var focusedDetailsSection: TvDetailsFocusSection = .actions
     @State private var detailsFocusMoveGeneration = 0
     @State private var pendingPlayFocusGeneration: Int?
-    /// Episode control to re-focus once the stream picker closes, captured when
-    /// this content gets disabled. Same approach Home uses for the card you
-    /// left when entering Details — see `restoreEpisodeFocus`.
-    @State private var restoreEpisodeKey: String?
-    @State private var restoreGeneration = 0
-    @Environment(\.isEnabled) private var isEnabled
+    /// Play is seeded as the focus target once, when this content first swaps
+    /// in. Later appearances (back from the player cover or a pushed child)
+    /// leave focus to tvOS, which restores the control the user left on.
+    @State private var didSeedPlayFocus = false
+    /// False while the player cover or a pushed child hides this screen.
+    @Environment(\.detailsIsOnScreen) private var isOnScreen
     @AppStorage(SettingsKey.smartStreamSelection) private var smartStreamSelection = false
     /// Bumped whenever a watched mark or a progress write lands. Resume progress
     /// is read straight from the stores below rather than from `uiState`, so
     /// without this the episode strip keeps drawing the bar it rendered with —
     /// marking an episode watched cleared the stores but nothing re-read them.
     @State private var progressRevision = 0
+    /// A progress write arrived while the player covered this screen. The
+    /// player writes progress continuously, so those are coalesced into one
+    /// refresh when the screen is back rather than invalidating it under the cover.
+    @State private var progressRefreshPending = false
 
     var body: some View {
         if let meta = uiState.meta {
@@ -1982,10 +2026,7 @@ struct TvDetailsContent: View {
                                 .padding(.bottom, 6)
                                 // Unfocusable while an episode is being restored
                                 // to, so the engine can't claim these instead.
-                                .disabled(
-                                    restoreEpisodeKey != nil
-                                        || !isDetailsFocusReachable(.actions)
-                                    )
+                                .disabled(!isDetailsFocusReachable(.actions))
 
                                 TvDetailsSummary(meta: meta, simkl: uiState.simklRatings)
 
@@ -2007,7 +2048,7 @@ struct TvDetailsContent: View {
                                         onPlayManually: onEpisodePlayManually,
                                         onEpisodeMenuPresented: { onEpisodeMenuPresented?($0) },
                                         episodeFocus: $episodeFocus,
-                                        restrictFocusToKey: restoreEpisodeKey,
+                                        restrictFocusToKey: nil,
                                         entryLocked: focusedDetailsSection != .episodes,
                                         onMoveUpFromSeason: {
                                             focusPlayFromEpisodes(using: scrollProxy)
@@ -2038,10 +2079,7 @@ struct TvDetailsContent: View {
                                 )
                                 .padding(.top, 34)
                                 .id(TvDetailsScrollID.castSection)
-                                .disabled(
-                                    restoreEpisodeKey != nil
-                                        || !isDetailsFocusReachable(.cast)
-                                )
+                                .disabled(!isDetailsFocusReachable(.cast))
 
                                 if !uiState.moreLikeThis.isEmpty {
                                     TvDetailsRelatedRow(
@@ -2061,10 +2099,7 @@ struct TvDetailsContent: View {
                                     )
                                     .padding(.top, 40)
                                     .id(TvDetailsScrollID.moreLikeThisSection)
-                                    .disabled(
-                                        restoreEpisodeKey != nil
-                                            || !isDetailsFocusReachable(.related)
-                                    )
+                                    .disabled(!isDetailsFocusReachable(.related))
                                 }
 
                                 let productionCompanies = uiState.companies.filter { $0.kind == .production }
@@ -2088,10 +2123,7 @@ struct TvDetailsContent: View {
                                     )
                                     .padding(.top, 40)
                                     .id(TvDetailsScrollID.networkSection)
-                                    .disabled(
-                                        restoreEpisodeKey != nil
-                                            || !isDetailsFocusReachable(.network)
-                                    )
+                                    .disabled(!isDetailsFocusReachable(.network))
                                 }
 
                                 if !productionCompanies.isEmpty {
@@ -2112,10 +2144,7 @@ struct TvDetailsContent: View {
                                     )
                                     .padding(.top, 40)
                                     .id(TvDetailsScrollID.productionSection)
-                                    .disabled(
-                                        restoreEpisodeKey != nil
-                                            || !isDetailsFocusReachable(.production)
-                                    )
+                                    .disabled(!isDetailsFocusReachable(.production))
                                 }
 
                                 if !uiState.comments.isEmpty {
@@ -2135,10 +2164,7 @@ struct TvDetailsContent: View {
                                     )
                                     .padding(.top, 40)
                                     .id(TvDetailsScrollID.commentsSection)
-                                    .disabled(
-                                        restoreEpisodeKey != nil
-                                            || !isDetailsFocusReachable(.comments)
-                                    )
+                                    .disabled(!isDetailsFocusReachable(.comments))
                                 }
                             }
                             // Match Home's TV row inset so details content
@@ -2161,67 +2187,50 @@ struct TvDetailsContent: View {
             // button. Move it onto Play explicitly once the content appears
             // (async so it runs after the focus engine's own first pass).
             .onAppear {
+                // tvOS doesn't re-run default-focus when this content swaps in
+                // after the async load finishes, so seed Play explicitly once
+                // (async so it runs after the focus engine's own first pass).
+                // On later appearances tvOS restores the control the user left.
+                guard !didSeedPlayFocus else { return }
+                didSeedPlayFocus = true
                 focusedDetailsSection = .actions
                 DispatchQueue.main.async { actionFocus = .play }
-            }
-            // Opening the stream picker disables this content, and on the way
-            // back tvOS re-places focus geometrically — which is how leaving an
-            // episode's picker landed you on the season pills. Capture the
-            // episode on the way out, and while that capture stands every other
-            // control here is unfocusable, so the engine can only put focus back
-            // where it was.
-            .onChange(of: isEnabled) { _, enabled in
-                if !enabled {
-                    restoreGeneration &+= 1
-                    restoreEpisodeKey = episodeFocus
-                } else if let target = restoreEpisodeKey {
-                    restoreEpisodeFocus(to: target, generation: restoreGeneration)
-                }
-            }
-            .onChange(of: episodeFocus) { _, newValue in
-                // Restoration landed — lift the restriction.
-                if let newValue, newValue == restoreEpisodeKey {
-                    restoreEpisodeKey = nil
-                }
             }
             // Marking an episode watched clears its progress across three
             // stores, and the remote provider's optimistic layer is cleared one
             // hop later — so every one of them has to be able to invalidate this
             // view, not just the mark itself.
             .onReceive(NotificationCenter.default.publisher(for: WatchedStore.changedNotification)) { _ in
-                progressRevision &+= 1
+                noteProgressChanged()
             }
             .onReceive(NotificationCenter.default.publisher(for: ContinueWatchingStore.changedNotification)) { _ in
-                progressRevision &+= 1
+                noteProgressChanged()
             }
             .onReceive(
                 NotificationCenter.default.publisher(
                     for: TraktSettingsStore.continueWatchingChangedNotification
                 )
             ) { _ in
-                progressRevision &+= 1
+                noteProgressChanged()
+            }
+            .onChange(of: isOnScreen) { _, onScreen in
+                if onScreen, progressRefreshPending {
+                    progressRefreshPending = false
+                    progressRevision &+= 1
+                }
             }
         } else {
             EmptyView()
         }
     }
 
-    /// Nudges focus back onto the captured episode control. The writes are
-    /// delayed because the cards are unfocusable for a few frames while the
-    /// picker fades, and the 1s clear is a safety net for a target that is gone
-    /// (the season was switched, say) so the strip can't stay unfocusable.
-    private func restoreEpisodeFocus(to target: String, generation: Int) {
-        for delay in [0.12, 0.45] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                if restoreGeneration == generation, restoreEpisodeKey == target {
-                    episodeFocus = target
-                }
-            }
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            if restoreGeneration == generation, restoreEpisodeKey == target {
-                restoreEpisodeKey = nil
-            }
+    /// Re-reads resume progress now, or once when the screen is back on screen
+    /// if the player cover is up (it writes progress continuously).
+    private func noteProgressChanged() {
+        if isOnScreen {
+            progressRevision &+= 1
+        } else {
+            progressRefreshPending = true
         }
     }
 
@@ -5104,6 +5113,7 @@ private struct TvStreamBadgeRowWidthKey: PreferenceKey {
 }
 
 private struct TvStreamImportedBadgeRow: View {
+    @Environment(\.detailsIsOnScreen) private var isOnScreen
     let badges: [StreamBadgeFilter]
     let fileSizeLabel: String?
     let isScrolling: Bool
@@ -5148,7 +5158,7 @@ private struct TvStreamImportedBadgeRow: View {
     @ViewBuilder
     private var overflowContent: some View {
         if isScrolling {
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !isOnScreen)) { timeline in
                 let cycleWidth = max(contentWidth + 28, 1)
                 let elapsed = max(0, timeline.date.timeIntervalSince(animationStart))
                 let offset = CGFloat(elapsed * 70)
@@ -5388,5 +5398,21 @@ struct ErrorView: View {
             }
         }
         .padding(32)
+    }
+}
+
+// MARK: - On-screen environment
+
+private struct DetailsIsOnScreenKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// False while the Details screen is hidden by the player cover or a pushed
+    /// child. Work that only matters while visible (progress re-reads, the
+    /// stream-badge marquee) pauses on it instead of running under the cover.
+    var detailsIsOnScreen: Bool {
+        get { self[DetailsIsOnScreenKey.self] }
+        set { self[DetailsIsOnScreenKey.self] = newValue }
     }
 }

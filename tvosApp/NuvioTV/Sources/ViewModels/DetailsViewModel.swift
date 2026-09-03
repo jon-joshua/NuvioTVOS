@@ -22,6 +22,10 @@ class DetailsViewModel: ObservableObject {
     private var observedRequestKey: String?
     private var lastAppliedStreamsRequestKey: String?
     private var lastAppliedStreamsRevision: UInt64?
+    /// Set by `cancelAllTasks` when the screen is covered mid-work, consumed by
+    /// `resumeAfterCover`.
+    private var enrichmentWasInterrupted = false
+    private var streamObservationWasInterrupted = false
 
     init(repository: CatalogRepository) {
         self.repository = repository
@@ -86,12 +90,34 @@ class DetailsViewModel: ObservableObject {
 
     func cancelAllTasks() {
         TVHomeDebugTrace.log("details.cancelAllTasks")
+        // Remember what was cut short so `resumeAfterCover` can pick it up
+        // without re-fetching the primary metadata.
+        enrichmentWasInterrupted = enrichmentTask != nil || deferredLoadTask != nil
+        streamObservationWasInterrupted = streamObserveTask != nil
         deferredLoadTask?.cancel()
         deferredLoadTask = nil
         streamObserveTask?.cancel()
         streamObserveTask = nil
         enrichmentTask?.cancel()
         enrichmentTask = nil
+    }
+
+    /// The screen is back after the player cover (or a pushed child) hid it.
+    /// `cancelAllTasks` ran on the way out; restart only what it interrupted.
+    /// Streams live in `StreamsRepository.shared`, so re-arming the observer
+    /// re-reads cached results rather than refetching them.
+    func resumeAfterCover() {
+        guard let meta = uiState.meta else { return }
+        if enrichmentWasInterrupted {
+            enrichmentWasInterrupted = false
+            TVHomeDebugTrace.log("details.resume.enrichment id=\(meta.id)")
+            loadEnrichment(for: meta)
+        }
+        if streamObservationWasInterrupted, let key = observedRequestKey {
+            streamObservationWasInterrupted = false
+            TVHomeDebugTrace.log("details.resume.streams key=\(key)")
+            resumeSharedStreamObservation(key: key)
+        }
     }
 
     /// Loads More Like This, Production companies, and top Trakt comments
@@ -246,7 +272,14 @@ class DetailsViewModel: ObservableObject {
 
         // Seed UI from cache immediately (return-from-playback reuse).
         applyDiscoveryState(StreamsRepository.shared.state, expectedKey: key)
+        resumeSharedStreamObservation(key: key)
+    }
 
+    /// (Re)starts observing the shared discovery for `key`. Safe to call after
+    /// `cancelAllTasks`: the shared job kept running, so this only catches up.
+    private func resumeSharedStreamObservation(key: String) {
+        streamObserveTask?.cancel()
+        applyDiscoveryState(StreamsRepository.shared.state, expectedKey: key)
         streamObserveTask = Task { [weak self] in
             guard let self else { return }
             // Poll shared state; Combine is heavier and this keeps observation

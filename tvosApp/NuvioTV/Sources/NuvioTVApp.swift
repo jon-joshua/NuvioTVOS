@@ -43,36 +43,16 @@ enum TVHomeDebugTrace {
     }
 }
 
-enum TVScreen {
-    case login
-    case profileSelection
-    case main
-    case details(id: String, type: String)
-    case player(url: URL, meta: NuvioMeta, subtitle: String, httpHeaders: [String: String], externalSubtitles: [NuvioSubtitle], resumeFrom: Double?)
-    case cloudLibrary
-    /// Browse titles inside one collection folder (catalogs grouped under it).
-    case collectionFolder(TVCollectionFolderItem, collectionTitle: String)
-    /// All titles from a production company or network.
-    case productionBrowse(MetaCompany)
-    /// Movies and series associated with a TMDB person.
-    case personBrowse(TmdbPersonMetadata)
-}
-
-public enum PlaybackOrigin {
-    case main
-    case details
-    case cloudLibrary
-}
-
-private enum DetailsReturnDestination {
-    case main
-    case collectionFolder(TVCollectionFolderItem, collectionTitle: String)
-}
-
-/// Main content view - entry point for the app with screen routing
+/// Main content view - entry point for the app with screen routing.
+///
+/// `phase` gates login / who's-watching / main. Inside `.main`, everything the
+/// user can push on top of the tab view lives in `navigation.path` (a native
+/// `NavigationStack`), and the built-in player is a full-screen cover. See
+/// `AppNavigation.swift`.
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
-    @State private var activeScreen: TVScreen = .login
+    @State private var phase: AppPhase = .login
+    @StateObject private var navigation = AppNavigationModel()
     @State private var resolvedInitialScreen = false
     /// `nil` until tvOS has actually backgrounded the app, so the initial
     /// `.active` callback is never treated as a resume.
@@ -101,60 +81,29 @@ struct ContentView: View {
     /// Ceiling on the profile-switch cover, whatever Home ends up publishing.
     private static let profileGateTimeout: TimeInterval = 5
     @State private var selectedTab: TVTab = .home
-    /// Series context for the current playback, captured at play time so the
-    /// player can offer/auto-play the next episode. Empty for movies/trailers.
-    @State private var playbackEpisodes: [NuvioVideo] = []
-    @State private var playbackCurrentEpisode: NuvioVideo?
-    @State private var playbackOrigin: PlaybackOrigin = .main
-    @State private var playbackDidStart = false
-    @State private var reopenStreamPickerOnDetails = false
-    @State private var reopenStreamPickerEpisode: NuvioVideo?
-    /// Title whose liquid-glass quick-actions menu is showing (long-press on a
-    /// card). Presented as an overlay over the tab view, like Details/Player.
-    @State private var cardMenuMeta: NuvioMeta?
-    /// Where Details opened from the quick-actions menu should return. Collection
-    /// cards keep their browser in the navigation chain instead of falling Home.
-    @State private var cardMenuReturnDestination: DetailsReturnDestination = .main
-    /// Continue Watching entry whose quick-actions menu is showing. Held apart
-    /// from `cardMenuMeta` because a resume card offers resume actions (play
-    /// manually / restart / remove) rather than the generic title actions.
-    @State private var continueWatchingMenuItem: ContinueWatchingItem?
     /// URL-less Continue Watching entries (for example synced progress or Next
     /// Up) resolve their stream in place instead of opening Details first.
     @State private var isResolvingContinueWatchingStream = false
     @State private var resolvingContinueWatchingItem: ContinueWatchingItem?
     @State private var continueWatchingPlaybackTask: Task<Void, Never>?
+    /// Owns focus while the Continue Watching loader covers the stack, so Menu
+    /// reaches its `onExitCommand` instead of the rail underneath.
+    @FocusState private var loaderFocused: Bool
     @State private var pendingDeepLinkURL: URL?
-    /// Details title to restore when leaving a production company browse.
-    @State private var productionBrowseReturn: (id: String, type: String)?
-    /// Details title to restore when leaving a person browse.
-    @State private var personBrowseReturn: (id: String, type: String)?
-    /// Titles to walk back through when Details opened Details ("More like
-    /// this"). Empty means the current Details is the root of its chain and back
-    /// belongs to its recorded return destination.
-    @State private var detailsBackStack: [(id: String, type: String)] = []
-    /// Where the root Details screen should return. This is normally Home, but
-    /// a title opened from a collection must return to that collection.
-    @State private var detailsReturnDestination: DetailsReturnDestination = .main
-    /// Bumped only after the Details view has actually left the hierarchy.
-    /// Home uses this lifecycle signal to request focus at the first moment
-    /// tvOS can accept it, instead of guessing with delayed timers.
-    @State private var detailsDidDisappearGeneration: UInt = 0
     @StateObject private var authManager = AuthManager()
     @StateObject private var profileViewModel = ProfileViewModel()
     @StateObject private var syncManager = NuvioSyncManager()
     @StateObject private var searchViewModel = SearchViewModel()
     @StateObject private var libraryViewModel = LibraryViewModel()
     // Owned here (not inside TVHomeView) so the Home catalog + focused card
-    // survive the details/player push, which tears TVHomeView down. Returning
-    // then restores the exact card instead of reloading and jumping to the top.
+    // survive tab switches and profile changes, which do tear TVHomeView down.
     @StateObject private var homeStore = TVHomeStore()
 
     var body: some View {
         ZStack {
             ProfileScopedRootBackground()
 
-            switch activeScreen {
+            switch phase {
             case .login:
                 // `.login` is also the value this state starts at, before
                 // `onAppear` has read the restored session — so it must not put
@@ -173,7 +122,7 @@ struct ContentView: View {
                         }
                         withAnimation(.easeInOut(duration: 0.28)) {
                             awaitingPostLoginSync = syncManager.isPullingAccountProfiles
-                            activeScreen = .profileSelection
+                            phase = .profileSelection
                         }
                     }
                     .transition(.opacity)
@@ -216,20 +165,20 @@ struct ContentView: View {
                             selectedTab = .home
                             beginProfileGate()
                             withAnimation(.easeInOut(duration: 0.28)) {
-                                activeScreen = .main
+                                phase = .main
                             }
                             resumePendingDeepLinkIfPossible()
                         }
                 }
 
-            case .main, .details, .player, .cloudLibrary, .collectionFolder, .productionBrowse, .personBrowse:
-                // The tab view (Home included) stays mounted for the whole
-                // session; Details and Player are presented as overlays on TOP
-                // of it rather than replacing it. Returning therefore leaves
-                // Home exactly as the user left it -- same scroll, same focused
-                // card (tvOS focus memory) -- instead of rebuilding it from
-                // scratch and snapping back to the first card.
-                appContainer
+            case .main:
+                // The tab view (Home included) is the root of a navigation
+                // stack and stays mounted for the whole session; Details and
+                // the browse screens are pushed on top of it and the player is
+                // a full-screen cover. Returning therefore leaves Home exactly
+                // as the user left it, and tvOS restores focus to the card the
+                // user left on because that card never went away.
+                mainContainer
                     .transition(.opacity)
             }
         }
@@ -259,15 +208,6 @@ struct ContentView: View {
             }
         }
         .background(Color.black.ignoresSafeArea())
-        // Safety net for the Menu button while an overlay is up. During the
-        // overlay's insert animation focus is briefly in limbo (the tab view is
-        // disabled, the overlay hasn't taken focus yet); a Menu press then finds
-        // no `.onExitCommand` handler and tvOS quits the app. This root handler
-        // catches those stray presses and dismisses the overlay instead. When
-        // focus is settled inside Details/Player their own handler fires first,
-        // so this only kicks in for the in-between frames. No handler is attached
-        // on Home, so Menu there keeps its normal tab-level behaviour.
-        .onExitCommand(perform: isOverlayPresented ? dismissOverlay : nil)
         .onOpenURL(perform: handleDeepLink)
         .onAppear {
             syncManager.attach(authManager: authManager, profileViewModel: profileViewModel)
@@ -297,13 +237,13 @@ struct ContentView: View {
                     // of auto-entering the local Guest.
                     awaitingPostLoginSync = true
                     enterMainAfterPostLoginSync = autoSelectLast
-                    activeScreen = .profileSelection
+                    phase = .profileSelection
                 } else if autoSelectLast,
                           let activeProfile = profileViewModel.activeProfile,
                           !activeProfile.isPinProtected,
                           !(awaitingRealProfiles && isGuestPlaceholder(activeProfile)) {
                     beginProfileGate()
-                    activeScreen = .main
+                    phase = .main
                     resumePendingDeepLinkIfPossible()
                 } else {
                     // Profiles are already on disk, so the picker can be shown
@@ -311,7 +251,7 @@ struct ContentView: View {
                     // is the ordinary cold launch: waiting behind the sync
                     // screen every time taught nothing the picker didn't
                     // already know.
-                    activeScreen = .profileSelection
+                    phase = .profileSelection
                 }
             }
         }
@@ -333,7 +273,7 @@ struct ContentView: View {
                     enterMainAfterPostLoginSync = false
                     if shouldEnterMain {
                         beginProfileGate()
-                        activeScreen = .main
+                        phase = .main
                         resumePendingDeepLinkIfPossible()
                     }
                 }
@@ -370,7 +310,7 @@ struct ContentView: View {
         guard let backgroundedAt else { return }
         self.backgroundedAt = nil
         guard resolvedInitialScreen, !isOnProfileSelection else { return }
-        if case .login = activeScreen { return }
+        if phase == .login { return }
 
         let autoSelectLast = ProfileSettings.current.object(
             forKey: SettingsKey.profileAutoSelectLast
@@ -390,10 +330,9 @@ struct ContentView: View {
         continueWatchingPlaybackTask?.cancel()
         continueWatchingPlaybackTask = nil
         isResolvingContinueWatchingStream = false
-        cardMenuMeta = nil
-        continueWatchingMenuItem = nil
+        navigation.reset()
         withAnimation(.easeInOut(duration: 0.28)) {
-            activeScreen = .profileSelection
+            phase = .profileSelection
         }
     }
 
@@ -420,137 +359,18 @@ struct ContentView: View {
             && name == "nuvio guest"
     }
 
-    private var isOverlayPresented: Bool {
-        if isResolvingContinueWatchingStream { return true }
-        return fullScreenOverlayPresented
-    }
-
-    /// Full-screen overlays already hide Home with alpha zero. Propagating
-    /// `.disabled` through that hidden tree changes `isEnabled` for every
-    /// resident card and forces the shelves to lay themselves out again while
-    /// Details is entering. Keep the environment lock for visible menus, where
-    /// Home still needs to stay on screen but must not receive focus.
-    private var shouldDisableHomeContent: Bool {
-        isOverlayPresented && !fullScreenOverlayPresented
-    }
-
-    /// Details/Player fully replace Home, so the tab view fades to black under
-    /// them. The card quick-actions menu is deliberately excluded — it keeps Home
-    /// visible behind its glass panel.
-    private var fullScreenOverlayPresented: Bool {
-        if isResolvingContinueWatchingStream { return true }
-        switch activeScreen {
-        case .details, .player, .cloudLibrary, .collectionFolder, .productionBrowse, .personBrowse: return true
-        default: return false
-        }
-    }
-
-    /// Keep a collection browser mounted beneath the Details chain it opened.
-    /// Its loaded rows, horizontal positions, focus memory, and watched badges
-    /// then survive the round trip instead of being rebuilt on every Back press.
-    private var presentedCollectionFolder: (
-        folder: TVCollectionFolderItem,
-        collectionTitle: String
-    )? {
-        if case let .collectionFolder(folder, collectionTitle) = activeScreen {
-            return (folder, collectionTitle)
-        }
-
-        switch activeScreen {
-        case .details, .player, .productionBrowse, .personBrowse:
-            if case let .collectionFolder(folder, collectionTitle) = detailsReturnDestination {
-                return (folder, collectionTitle)
-            }
-        default:
-            break
-        }
-        return nil
-    }
-
-    private var isCollectionFolderActive: Bool {
-        if case .collectionFolder = activeScreen { return true }
-        return false
-    }
-
-    /// Dismisses the current overlay to the same destination its own back action
-    /// would (Player returns to Details for series/trailers, otherwise Home).
-    /// Used only by the root Menu-button safety net; changing `activeScreen`
-    /// tears the overlay down, so Player's `onDisappear` cleanup still runs.
-    private func dismissOverlay() {
-        if isResolvingContinueWatchingStream {
-            continueWatchingPlaybackTask?.cancel()
-            continueWatchingPlaybackTask = nil
-            resolvingContinueWatchingItem = nil
-            isResolvingContinueWatchingStream = false
+    /// Opens Details as a fresh navigation (Home, search, a deep link). If the
+    /// player is up (a deep link while watching), it is dismissed first and the
+    /// push runs from the cover's `onDismiss`: UIKit drops a push issued while
+    /// a presentation is still animating out.
+    private func openDetailsRoot(id: String, type: String) {
+        TVHomeDebugTrace.log("details.open.root id=\(id) type=\(type)")
+        if navigation.player != nil {
+            navigation.pendingPostPlayerAction = .openDetailsRoot(id: id, type: type)
+            navigation.player = nil
             return
         }
-        switch activeScreen {
-        case .details:
-            leaveDetails()
-        case let .player(_, meta, subtitle, _, _, _):
-            dismissPlayer(meta: meta, subtitle: subtitle)
-        case .cloudLibrary, .collectionFolder:
-            withAnimation(.easeInOut(duration: 0.24)) {
-                activeScreen = .main
-            }
-        case .productionBrowse:
-            withAnimation(.easeInOut(duration: 0.24)) {
-                if let ret = productionBrowseReturn {
-                    activeScreen = .details(id: ret.id, type: ret.type)
-                } else {
-                    activeScreen = .main
-                }
-                productionBrowseReturn = nil
-            }
-        case .personBrowse:
-            withAnimation(.easeInOut(duration: 0.24)) {
-                if let ret = personBrowseReturn {
-                    activeScreen = .details(id: ret.id, type: ret.type)
-                } else {
-                    activeScreen = .main
-                }
-                personBrowseReturn = nil
-            }
-        default:
-            break
-        }
-    }
-
-    /// Backs out of Details to the title it was opened from (a "More like this"
-    /// chain), or to the screen that opened the root Details.
-    private func leaveDetails() {
-        TVHomeDebugTrace.log(
-            "details.leave backStackRemaining=\(detailsBackStack.count) returnDest=\(detailsReturnDestination)"
-        )
-        withAnimation(.easeInOut(duration: 0.24)) {
-            if let previous = detailsBackStack.popLast() {
-                activeScreen = .details(id: previous.id, type: previous.type)
-            } else {
-                switch detailsReturnDestination {
-                case .main:
-                    activeScreen = .main
-                case let .collectionFolder(folder, collectionTitle):
-                    activeScreen = .collectionFolder(folder, collectionTitle: collectionTitle)
-                }
-                detailsReturnDestination = .main
-            }
-        }
-    }
-
-    /// Opens Details as a fresh navigation (Home, search, a card menu, a deep
-    /// link). Any "More like this" chain belongs to the flow being left, so the
-    /// back stack starts empty and back from here returns to Home.
-    private func openDetailsRoot(
-        id: String,
-        type: String,
-        returnDestination: DetailsReturnDestination = .main
-    ) {
-        TVHomeDebugTrace.log(
-            "details.open.root id=\(id) type=\(type) returnDest=\(returnDestination)"
-        )
-        detailsBackStack.removeAll()
-        detailsReturnDestination = returnDestination
-        activeScreen = .details(id: id, type: type)
+        navigation.openDetailsRoot(id: id, type: type)
     }
 
     /// Handles Top Shelf, `nuvio://` / `nuvio-tv://` title open, and
@@ -573,21 +393,17 @@ struct ContentView: View {
         // generic id guard: callback URLs intentionally carry only a session
         // UUID, not a title id.
         if let callback = ExternalPlaybackCallback.parse(url) {
-            switch activeScreen {
-            case .login, .profileSelection:
-                pendingDeepLinkURL = url
-            default:
+            if phase == .main {
                 handleExternalPlaybackCallback(callback)
+            } else {
+                pendingDeepLinkURL = url
             }
             return
         }
 
-        switch activeScreen {
-        case .login, .profileSelection:
+        guard phase == .main else {
             pendingDeepLinkURL = url
             return
-        default:
-            break
         }
 
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
@@ -715,12 +531,9 @@ struct ContentView: View {
 
     /// `stremio://…/manifest.json` installs the add-on (same as pasting the URL).
     private func handleStremioInstallDeepLink(_ url: URL) {
-        switch activeScreen {
-        case .login, .profileSelection:
+        guard phase == .main else {
             pendingDeepLinkURL = url
             return
-        default:
-            break
         }
         let raw = url.absoluteString
         let ok = CommunityAddonCatalog.install(manifestURL: raw)
@@ -745,8 +558,7 @@ struct ContentView: View {
     }
 
     private var isOnProfileSelection: Bool {
-        if case .profileSelection = activeScreen { return true }
-        return false
+        phase == .profileSelection
     }
 
     /// Covers Home while the picked profile's stores are re-pointed and its rows
@@ -888,8 +700,6 @@ struct ContentView: View {
             ? (TraktProgressService.currentContinueWatchingItem(for: item.meta) ?? item)
             : item
         let context = Self.episodeContext(for: item)
-        playbackEpisodes = context.episodes
-        playbackCurrentEpisode = context.current
 
         let profileId = profileViewModel.activeProfile?.id
         let storedStream = item.isUpNextEntry
@@ -912,7 +722,9 @@ struct ContentView: View {
                 subtitle: item.episodeSubtitle ?? "",
                 externalSubtitles: [],
                 resumeFrom: startFromBeginning ? nil : Self.resumePosition(for: item),
-                httpHeaders: httpHeaders
+                httpHeaders: httpHeaders,
+                episodes: context.episodes,
+                currentEpisode: context.current
             )
             return
         }
@@ -951,7 +763,9 @@ struct ContentView: View {
                     subtitle: prepared.subtitleLine,
                     externalSubtitles: prepared.subtitles,
                     resumeFrom: startFromBeginning ? nil : Self.resumePosition(for: item),
-                    httpHeaders: prepared.httpHeaders
+                    httpHeaders: prepared.httpHeaders,
+                    episodes: context.episodes,
+                    currentEpisode: context.current
                 )
             } else {
                 // Keep the manual picker available when no add-on returns a
@@ -969,12 +783,11 @@ struct ContentView: View {
     /// point still applies — Details' play path looks it up per episode.
     private func playContinueWatchingManually(_ item: ContinueWatchingItem) {
         let episode = Self.manualPlaybackEpisode(for: item)
-        withAnimation(.easeInOut(duration: 0.28)) {
-            continueWatchingMenuItem = nil
-            reopenStreamPickerOnDetails = true
-            reopenStreamPickerEpisode = episode
-            openDetailsRoot(id: item.meta.id, type: item.meta.type)
-        }
+        navigation.streamPickerRequest = StreamPickerRequest(
+            detailsKey: "\(item.meta.type):\(item.meta.id)",
+            episode: episode
+        )
+        openDetailsRoot(id: item.meta.id, type: item.meta.type)
     }
 
     /// Episode entry the stream picker should open on, or nil for a movie.
@@ -1043,6 +856,8 @@ struct ContentView: View {
         externalSubtitles: [NuvioSubtitle],
         resumeFrom: Double?,
         httpHeaders: [String: String] = [:],
+        episodes: [NuvioVideo] = [],
+        currentEpisode: NuvioVideo? = nil,
         origin: PlaybackOrigin = .main,
         customPlayer: ExternalPlayer? = nil
     ) {
@@ -1061,7 +876,7 @@ struct ContentView: View {
         if player == .infuse {
             let id = UUID().uuidString
             let numbers: (season: Int, episode: Int)?
-            if let current = playbackCurrentEpisode, current.season > 0, current.episode > 0 {
+            if let current = currentEpisode, current.season > 0, current.episode > 0 {
                 numbers = (current.season, current.episode)
             } else if let parsed = Self.episodeNumbers(fromSubtitle: subtitle) {
                 numbers = parsed
@@ -1115,6 +930,8 @@ struct ContentView: View {
             httpHeaders: httpHeaders,
             externalSubtitles: externalSubtitles,
             resumeFrom: resumeFrom,
+            episodes: episodes,
+            currentEpisode: currentEpisode,
             origin: origin
         )
     }
@@ -1126,41 +943,41 @@ struct ContentView: View {
         httpHeaders: [String: String],
         externalSubtitles: [NuvioSubtitle],
         resumeFrom: Double?,
+        episodes: [NuvioVideo],
+        currentEpisode: NuvioVideo?,
         origin: PlaybackOrigin
     ) {
         if PictureInPictureManager.shared.isPictureInPictureActive,
            PictureInPictureManager.shared.activeContext?.url != url {
             PictureInPictureManager.shared.invalidateSession()
         }
-        playbackOrigin = origin
-        playbackDidStart = false
-        withAnimation(.easeInOut(duration: 0.28)) {
-            activeScreen = .player(
-                url: url,
-                meta: meta,
-                subtitle: subtitle,
-                httpHeaders: httpHeaders,
-                externalSubtitles: externalSubtitles,
-                resumeFrom: resumeFrom
-            )
-        }
+        navigation.playbackDidStart = false
+        navigation.player = PlayerPresentation(
+            url: url,
+            meta: meta,
+            subtitle: subtitle,
+            httpHeaders: httpHeaders,
+            externalSubtitles: externalSubtitles,
+            resumeFrom: resumeFrom,
+            episodes: episodes,
+            currentEpisode: currentEpisode,
+            origin: origin
+        )
     }
 
     private func setupPictureInPicture() {
         PictureInPictureManager.shared.onRestoreUI = { [self] context, completion in
-            withAnimation(.easeInOut(duration: 0.24)) {
-                self.playbackOrigin = context.playbackOrigin
-                self.playbackEpisodes = context.episodes
-                self.playbackCurrentEpisode = context.currentEpisode
-                self.activeScreen = .player(
-                    url: context.url,
-                    meta: context.meta,
-                    subtitle: context.subtitle,
-                    httpHeaders: context.httpHeaders,
-                    externalSubtitles: context.externalSubtitles,
-                    resumeFrom: context.resumeFrom
-                )
+            // AVKit's completion is parked by the manager until the restored
+            // player's surface reports `fullscreenSurfaceDidRebind`, so it is
+            // safe to acknowledge here before the cover has mounted.
+            if let current = navigation.player, current.url == context.url {
+                completion(true)
+                return
             }
+            // The session already played, so dismissing later must not treat
+            // it as a stream that never started.
+            navigation.playbackDidStart = true
+            navigation.player = PlayerPresentation(from: context)
             completion(true)
         }
 
@@ -1169,183 +986,35 @@ struct ContentView: View {
         }
     }
 
-    /// The persistent tab view plus any Details/Player overlay. Keeping the tab
-    /// view here (never swapped out) is what preserves Home's state across the
-    /// details push. The tab view is disabled while an overlay is up so focus
-    /// can't bleed to the cards behind it; re-enabling on return hands focus
-    /// back to the card the user left on.
+    /// The tab view as the root of a native navigation stack, with the built-in
+    /// player as a full-screen cover on top. Pushed screens keep the screen
+    /// beneath them mounted, so Home (and a Details chain) survives the round
+    /// trip and tvOS restores focus to the card the user left on.
+    ///
+    /// The Continue Watching loader and the profile-switch cover are siblings
+    /// *outside* the stack so they cover pushed screens as well.
     @ViewBuilder
-    private var appContainer: some View {
+    private var mainContainer: some View {
         PosterChromeStyleProvider {
         ZStack {
-            mainTabView
-                .disabled(shouldDisableHomeContent)
-                // `.disabled` stops the tab *content* from taking focus, but the
-                // sidebar/tab bar itself can still attract the focus engine while
-                // an overlay is settling; focus landing there un-highlights the
-                // overlay's seeded item and makes the next Menu press suspend the
-                // app (system behaviour for Menu on a root tab bar). Alpha-0
-                // views are unfocusable, so fading the tab view out while it's
-                // covered keeps focus inside the overlay. It stays mounted, so
-                // Home's state and focus memory survive for the return trip.
-                // The card quick-actions menu is the exception: it floats a
-                // liquid-glass panel *over* a still-visible Home, so the tab view
-                // stays on screen (fading it to black would leave the glass
-                // nothing to refract) — it's only `.disabled` so its cards can't
-                // steal focus, and the menu re-grabs focus if the engine drifts.
-                .opacity(fullScreenOverlayPresented ? 0 : 1)
-
-            if case .details(let contentId, let contentType) = activeScreen {
-                detailsScreen(contentId: contentId, contentType: contentType)
-                    .id("\(contentType):\(contentId)")
-                    .transition(.opacity)
-                    .onDisappear {
-                        detailsDidDisappearGeneration &+= 1
+            NavigationStack(path: $navigation.path) {
+                mainTabView
+                    .toolbar(.hidden, for: .navigationBar)
+                    .navigationDestination(for: Route.self) { route in
+                        destination(for: route)
                     }
-                    .zIndex(1)
             }
-
-            if case .player(let url, let meta, let subtitle, let httpHeaders, let externalSubtitles, let resumeFrom) = activeScreen {
-                playerScreen(
-                    url: url,
-                    meta: meta,
-                    subtitle: subtitle,
-                    httpHeaders: httpHeaders,
-                    externalSubtitles: externalSubtitles,
-                    resumeFrom: resumeFrom
-                )
-                .transition(.opacity)
-                .zIndex(2)
+            .fullScreenCover(item: $navigation.player, onDismiss: runPendingPostPlayerAction) { presentation in
+                playerScreen(presentation)
             }
-
-            if case .cloudLibrary = activeScreen {
-                cloudLibraryScreen()
-                    .transition(.opacity)
-                    .zIndex(1)
-            }
-
-            if let collectionContext = presentedCollectionFolder {
-                let folder = collectionContext.folder
-                let collectionTitle = collectionContext.collectionTitle
-                CollectionFolderBrowseView(
-                    folder: folder,
-                    collectionTitle: collectionTitle,
-                    repository: CinemetaCatalogRepository(),
-                    onSelect: { meta in
-                        withAnimation(.easeInOut(duration: 0.28)) {
-                            openDetailsRoot(
-                                id: meta.id,
-                                type: meta.type,
-                                returnDestination: .collectionFolder(
-                                    folder,
-                                    collectionTitle: collectionTitle
-                                )
-                            )
-                        }
-                    },
-                    onLongPress: { meta in
-                        cardMenuReturnDestination = .collectionFolder(
-                            folder,
-                            collectionTitle: collectionTitle
-                        )
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            cardMenuMeta = meta
-                        }
-                    },
-                    onBack: {
-                        if ["STREAMING_SERVICE", "STUDIO_FRANCHISE"].contains(
-                            folder.presentationStyle?.uppercased() ?? ""
-                        ) {
-                            var transaction = Transaction()
-                            transaction.animation = nil
-                            withTransaction(transaction) {
-                                activeScreen = .main
-                            }
-                        } else {
-                            withAnimation(.easeInOut(duration: 0.24)) {
-                                activeScreen = .main
-                            }
-                        }
-                    }
-                )
-                .disabled(!isCollectionFolderActive || cardMenuMeta != nil)
-                .transition(.opacity)
-                .zIndex(isCollectionFolderActive ? 1 : 0)
-            }
-
-            if case .productionBrowse(let company) = activeScreen {
-                ProductionBrowseView(
-                    company: company,
-                    onSelect: { title in
-                        withAnimation(.easeInOut(duration: 0.28)) {
-                            if let ret = productionBrowseReturn {
-                                // Keep the originating Details screen in the
-                                // same navigation chain. Otherwise backing out
-                                // of the selected title falls all the way home.
-                                detailsBackStack.append((id: ret.id, type: ret.type))
-                                activeScreen = .details(id: title.id, type: title.type)
-                            } else {
-                                openDetailsRoot(id: title.id, type: title.type)
-                            }
-                            productionBrowseReturn = nil
-                        }
-                    },
-                    onBack: {
-                        withAnimation(.easeInOut(duration: 0.24)) {
-                            if let ret = productionBrowseReturn {
-                                activeScreen = .details(id: ret.id, type: ret.type)
-                            } else {
-                                activeScreen = .main
-                            }
-                            productionBrowseReturn = nil
-                        }
-                    }
-                )
-                .transition(.opacity)
-                .zIndex(1)
-            }
-
-            if case .personBrowse(let person) = activeScreen {
-                PersonBrowseView(
-                    person: person,
-                    onSelect: { title in
-                        withAnimation(.easeInOut(duration: 0.28)) {
-                            if let ret = personBrowseReturn {
-                                // Keep the originating Details screen in the
-                                // same navigation chain. Otherwise backing out
-                                // of the selected title falls all the way home.
-                                detailsBackStack.append((id: ret.id, type: ret.type))
-                                activeScreen = .details(id: title.id, type: title.type)
-                            } else {
-                                openDetailsRoot(id: title.id, type: title.type)
-                            }
-                            personBrowseReturn = nil
-                        }
-                    },
-                    onBack: {
-                        withAnimation(.easeInOut(duration: 0.24)) {
-                            if let ret = personBrowseReturn {
-                                activeScreen = .details(id: ret.id, type: ret.type)
-                            } else {
-                                activeScreen = .main
-                            }
-                            personBrowseReturn = nil
-                        }
-                    }
-                )
-                .transition(.opacity)
-                .zIndex(1)
-            }
+            // Alpha-0 views are unfocusable, so fading the stack out while the
+            // loader is up keeps focus (and the Menu press) on the loader.
+            .opacity(isResolvingContinueWatchingStream ? 0 : 1)
 
             if isResolvingContinueWatchingStream, let item = resolvingContinueWatchingItem {
-                PlayerLoadingOverlay(
-                    backdropUrl: item.meta.backgroundUrl ?? item.meta.posterUrl,
-                    logoUrl: item.meta.logoUrl,
-                    title: item.meta.name,
-                    message: L10n.string("player_status_starting_stream", fallback: "Starting stream")
-                )
-                .transition(.opacity)
-                .zIndex(3)
+                continueWatchingLoadingOverlay(for: item)
+                    .transition(.opacity)
+                    .zIndex(3)
             }
 
             // The adaptive tab sidebar is briefly expanded while its first
@@ -1371,6 +1040,79 @@ struct ContentView: View {
         }
     }
 
+    /// The screen for one pushed route. Each keeps its own `onExitCommand`
+    /// (Menu) handler, which pops; the stack itself pops for the in-between
+    /// frames of a push where nothing holds focus yet.
+    @ViewBuilder
+    private func destination(for route: Route) -> some View {
+        Group {
+            switch route {
+            case let .details(id, type):
+                detailsScreen(contentId: id, contentType: type)
+            case let .collectionFolder(folder, collectionTitle):
+                CollectionFolderBrowseView(
+                    folder: folder,
+                    collectionTitle: collectionTitle,
+                    repository: CinemetaCatalogRepository(),
+                    onSelect: { meta in
+                        navigation.push(.details(id: meta.id, type: meta.type))
+                    },
+                    onLongPress: { _ in },
+                    onBack: { navigation.pop() }
+                )
+            case let .productionBrowse(company):
+                ProductionBrowseView(
+                    company: company,
+                    onSelect: { title in
+                        navigation.push(.details(id: title.id, type: title.type))
+                    },
+                    onBack: { navigation.pop() }
+                )
+            case let .personBrowse(person):
+                PersonBrowseView(
+                    person: person,
+                    onSelect: { title in
+                        navigation.push(.details(id: title.id, type: title.type))
+                    },
+                    onBack: { navigation.pop() }
+                )
+            case .cloudLibrary:
+                cloudLibraryScreen()
+            }
+        }
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    /// Shown over the stack while a URL-less Continue Watching card resolves
+    /// its stream. Owns focus so Menu cancels the resolution instead of
+    /// reaching the tab view underneath.
+    private func continueWatchingLoadingOverlay(for item: ContinueWatchingItem) -> some View {
+        PlayerLoadingOverlay(
+            backdropUrl: item.meta.backgroundUrl ?? item.meta.posterUrl,
+            logoUrl: item.meta.logoUrl,
+            title: item.meta.name,
+            message: L10n.string("player_status_starting_stream", fallback: "Starting stream")
+        )
+        .overlay(alignment: .bottomTrailing) {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .focusable(true)
+                .focused($loaderFocused)
+        }
+        .focusSection()
+        .onAppear {
+            DispatchQueue.main.async { loaderFocused = true }
+        }
+        .onExitCommand(perform: cancelContinueWatchingResolution)
+    }
+
+    private func cancelContinueWatchingResolution() {
+        continueWatchingPlaybackTask?.cancel()
+        continueWatchingPlaybackTask = nil
+        resolvingContinueWatchingItem = nil
+        isResolvingContinueWatchingStream = false
+    }
+
     private var mainTabView: some View {
         TVMainTabView(
             selectedTab: $selectedTab,
@@ -1380,8 +1122,7 @@ struct ContentView: View {
             homeStore: homeStore,
             homeCatalogRevision: syncManager.homeCatalogRevision,
             homeCollectionsRevision: syncManager.homeCollectionsRevision,
-            isFullScreenOverlayPresented: fullScreenOverlayPresented,
-            detailsDidDisappearGeneration: detailsDidDisappearGeneration,
+            isCovered: navigation.isCoveringTabs,
             accountEmail: authManager.currentEmail,
             isAuthenticated: authManager.isAuthenticated,
             sessionNeedsReauthentication: authManager.sessionNeedsReauthentication,
@@ -1392,9 +1133,10 @@ struct ContentView: View {
                 // A fresh profile should get a fresh Home (different Continue
                 // Watching, etc.), so drop the cached catalog.
                 homeStore.reset()
+                navigation.reset()
                 withAnimation(.easeInOut(duration: 0.28)) {
                     profileViewModel.activeProfile = nil
-                    activeScreen = .profileSelection
+                    phase = .profileSelection
                 }
             },
             onChangeProfileAvatar: { profileId, avatarId in
@@ -1424,10 +1166,11 @@ struct ContentView: View {
             onSignIn: {
                 authManager.requireLogin()
                 homeStore.reset()
+                navigation.reset()
                 withAnimation(.easeInOut(duration: 0.28)) {
                     selectedTab = .home
                     profileViewModel.activeProfile = nil
-                    activeScreen = .login
+                    phase = .login
                 }
             },
             onSignOut: {
@@ -1439,39 +1182,21 @@ struct ContentView: View {
                 homeStore.reset()
                 searchViewModel.clear()
                 searchViewModel.clearRecent()
+                navigation.reset()
                 withAnimation(.easeInOut(duration: 0.28)) {
                     selectedTab = .home
                     profileViewModel.activeProfile = nil
-                    activeScreen = .login
+                    phase = .login
                 }
             },
             onNavigateToDetails: { contentId, contentType in
-                // Home defers its focus-restoration render until Details closes,
-                // so every tab can now use the same presentation transaction.
-                withAnimation(.easeInOut(duration: 0.28)) {
-                    openDetailsRoot(id: contentId, type: contentType)
-                }
+                openDetailsRoot(id: contentId, type: contentType)
             },
             onRequestAccountRefresh: {
                 syncManager.refreshAccountIfIdle()
             },
             onOpenCollectionFolder: { folder, collectionTitle in
-                if ["STREAMING_SERVICE", "STUDIO_FRANCHISE"].contains(
-                    folder.presentationStyle?.uppercased() ?? ""
-                ) {
-                    // This template owns a full-bleed backdrop and several
-                    // poster rails. Cross-fading it with the equally heavy Home
-                    // tree makes entry hitch, so hand off in one transaction.
-                    var transaction = Transaction()
-                    transaction.animation = nil
-                    withTransaction(transaction) {
-                        activeScreen = .collectionFolder(folder, collectionTitle: collectionTitle)
-                    }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.28)) {
-                        activeScreen = .collectionFolder(folder, collectionTitle: collectionTitle)
-                    }
-                }
+                navigation.push(.collectionFolder(folder, collectionTitle: collectionTitle))
             },
             onResumePlayback: { item in
                 resumePlayback(item)
@@ -1485,25 +1210,10 @@ struct ContentView: View {
             onRemoveFromContinueWatching: { item in
                 removeFromContinueWatching(item)
             },
-            onLongPressCard: { meta in
-                cardMenuReturnDestination = .main
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    cardMenuMeta = meta
-                }
-            },
-            onLongPressContinueWatching: { item in
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    continueWatchingMenuItem = item
-                }
-            },
             onOpenCloudLibrary: {
-                withAnimation(.easeInOut(duration: 0.28)) {
-                    activeScreen = .cloudLibrary
-                }
+                navigation.push(.cloudLibrary)
             },
             onPlayCloudFile: { url, meta in
-                playbackEpisodes = []
-                playbackCurrentEpisode = nil
                 presentPlayback(
                     url: url,
                     meta: meta,
@@ -1517,53 +1227,42 @@ struct ContentView: View {
     }
 
     private func detailsScreen(contentId: String, contentType: String) -> some View {
-        DetailsScreen(
+        let detailsKey = "\(contentType):\(contentId)"
+        let request = navigation.streamPickerRequest
+        return DetailsScreen(
             id: contentId,
             type: contentType,
             repository: CinemetaCatalogRepository(),
-            initiallyPresentStreamPicker: reopenStreamPickerOnDetails,
-            initialStreamPickerEpisode: reopenStreamPickerEpisode,
-            onInitialStreamPickerPresented: {
-                reopenStreamPickerOnDetails = false
-                reopenStreamPickerEpisode = nil
+            streamPickerRequest: request?.detailsKey == detailsKey ? request : nil,
+            onStreamPickerRequestConsumed: {
+                navigation.streamPickerRequest = nil
             },
             onPlayClick: { streamUrlString, httpHeaders, meta, subtitle, externalSubtitles, currentEpisode, episodes, player in
-                if let url = URL(string: streamUrlString) {
-                    let isTrailer = subtitle == PlaybackMarkers.trailerSubtitle
-                    reopenStreamPickerOnDetails = false
-                    reopenStreamPickerEpisode = nil
-                    playbackEpisodes = episodes
-                    playbackCurrentEpisode = currentEpisode
-                    presentPlayback(
-                        url: url,
-                        meta: meta,
-                        subtitle: subtitle,
-                        externalSubtitles: externalSubtitles,
-                        resumeFrom: isTrailer ? nil : Self.resumePosition(for: meta, episode: currentEpisode),
-                        httpHeaders: httpHeaders,
-                        origin: .details,
-                        customPlayer: player
-                    )
-                }
+                guard let url = URL(string: streamUrlString) else { return }
+                let isTrailer = subtitle == PlaybackMarkers.trailerSubtitle
+                navigation.streamPickerRequest = nil
+                presentPlayback(
+                    url: url,
+                    meta: meta,
+                    subtitle: subtitle,
+                    externalSubtitles: externalSubtitles,
+                    resumeFrom: isTrailer ? nil : Self.resumePosition(for: meta, episode: currentEpisode),
+                    httpHeaders: httpHeaders,
+                    episodes: episodes,
+                    currentEpisode: currentEpisode,
+                    origin: .details,
+                    customPlayer: player
+                )
             },
-            onBack: { leaveDetails() },
+            onBack: { navigation.pop() },
             onOpenTitle: { nextId, nextType in
-                detailsBackStack.append((id: contentId, type: contentType))
-                withAnimation(.easeInOut(duration: 0.28)) {
-                    activeScreen = .details(id: nextId, type: nextType)
-                }
+                navigation.push(.details(id: nextId, type: nextType))
             },
             onOpenProduction: { company in
-                productionBrowseReturn = (contentId, contentType)
-                withAnimation(.easeInOut(duration: 0.28)) {
-                    activeScreen = .productionBrowse(company)
-                }
+                navigation.push(.productionBrowse(company))
             },
             onOpenPerson: { person in
-                personBrowseReturn = (contentId, contentType)
-                withAnimation(.easeInOut(duration: 0.28)) {
-                    activeScreen = .personBrowse(person)
-                }
+                navigation.push(.personBrowse(person))
             }
         )
     }
@@ -1572,8 +1271,6 @@ struct ContentView: View {
         CloudLibraryView(
             store: ProfileSettings.store(for: profileViewModel.activeProfile?.id),
             onPlay: { url, meta in
-                playbackEpisodes = []
-                playbackCurrentEpisode = nil
                 presentPlayback(
                     url: url,
                     meta: meta,
@@ -1583,11 +1280,7 @@ struct ContentView: View {
                     origin: .cloudLibrary
                 )
             },
-            onBack: {
-                withAnimation(.easeInOut(duration: 0.24)) {
-                    activeScreen = .main
-                }
-            }
+            onBack: { navigation.pop() }
         )
     }
 
@@ -1845,28 +1538,24 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func playerScreen(
-        url: URL,
-        meta: NuvioMeta,
-        subtitle: String,
-        httpHeaders: [String: String],
-        externalSubtitles: [NuvioSubtitle],
-        resumeFrom: Double?
-    ) -> some View {
-        let isTrailer = subtitle == PlaybackMarkers.trailerSubtitle
+    private func playerScreen(_ presentation: PlayerPresentation) -> some View {
+        let isTrailer = presentation.isTrailer
+        let meta = presentation.meta
+        let subtitle = presentation.subtitle
+        let currentEpisode = isTrailer ? nil : presentation.currentEpisode
         let store = ProfileSettings.store(for: profileViewModel.activeProfile?.id)
         let autoPlayNext = store.object(forKey: SettingsKey.autoPlayNext) as? Bool ?? true
         let autoPlayNextCountdown = store.object(forKey: SettingsKey.autoPlayNextCountdown) as? Int ?? 10
-        PlayerView(
-            url: url,
+        return PlayerView(
+            url: presentation.url,
             meta: meta,
             subtitle: subtitle,
-            httpHeaders: httpHeaders,
-            externalSubtitles: externalSubtitles,
-            resumeFrom: resumeFrom,
-            playbackOrigin: playbackOrigin,
-            episodes: isTrailer ? [] : playbackEpisodes,
-            currentEpisode: isTrailer ? nil : playbackCurrentEpisode,
+            httpHeaders: presentation.httpHeaders,
+            externalSubtitles: presentation.externalSubtitles,
+            resumeFrom: presentation.resumeFrom,
+            playbackOrigin: presentation.origin,
+            episodes: isTrailer ? [] : presentation.episodes,
+            currentEpisode: currentEpisode,
             autoPlayNextEnabled: autoPlayNext,
             autoPlayNextCountdownSeconds: autoPlayNextCountdown,
             resolveNextStream: (isTrailer || !meta.isSeries) ? nil : { episode in
@@ -1875,7 +1564,7 @@ struct ContentView: View {
             reloadCurrentStream: isTrailer ? nil : { excludedURLs in
                 let profileId = profileViewModel.activeProfile?.id
                 let excluded = Set(excludedURLs)
-                if let episode = playbackCurrentEpisode {
+                if let episode = currentEpisode {
                     return await Self.resolveStream(
                         contentId: episode.id,
                         type: "series",
@@ -1907,34 +1596,28 @@ struct ContentView: View {
                     profileId: profileViewModel.activeProfile?.id
                 )
             },
-            onFinished: isTrailer ? {
-                withAnimation(.easeInOut(duration: 0.24)) {
-                    activeScreen = .details(id: meta.id, type: meta.type)
-                }
-            } : nil,
+            // A trailer always plays over the Details that launched it, which is
+            // still mounted beneath the cover.
+            onFinished: isTrailer ? { navigation.player = nil } : nil,
             onPlaybackStarted: {
-                playbackDidStart = true
+                navigation.playbackDidStart = true
             },
             onPlayRecommendation: { recMeta, playManually in
-                dismissPlayer(meta: meta, subtitle: subtitle)
-                playRecommendedTitle(meta: recMeta, playManually: playManually)
+                navigation.pendingPostPlayerAction = .playRecommendation(recMeta, playManually: playManually)
+                navigation.player = nil
             },
             onOpenRecommendationDetails: { recMeta in
-                dismissPlayer(meta: meta, subtitle: subtitle)
-                withAnimation(.easeInOut(duration: 0.28)) {
-                    openDetailsRoot(id: recMeta.id, type: recMeta.type)
-                }
+                navigation.pendingPostPlayerAction = .openRecommendationDetails(recMeta)
+                navigation.player = nil
             }
         ) {
-            dismissPlayer(meta: meta, subtitle: subtitle)
+            dismissPlayer(presentation)
         }
     }
 
     private func playRecommendedTitle(meta: NuvioMeta, playManually: Bool) {
         if playManually || meta.isSeries {
-            withAnimation(.easeInOut(duration: 0.28)) {
-                openDetailsRoot(id: meta.id, type: meta.type)
-            }
+            openDetailsRoot(id: meta.id, type: meta.type)
             return
         }
 
@@ -1957,34 +1640,63 @@ struct ContentView: View {
                     httpHeaders: prepared.httpHeaders
                 )
             } else {
-                withAnimation(.easeInOut(duration: 0.28)) {
-                    openDetailsRoot(id: meta.id, type: meta.type)
-                }
+                openDetailsRoot(id: meta.id, type: meta.type)
             }
         }
     }
 
-    private func dismissPlayer(meta: NuvioMeta, subtitle: String) {
-        let isTrailer = subtitle == PlaybackMarkers.trailerSubtitle
-        withAnimation(.easeInOut(duration: 0.24)) {
-            switch playbackOrigin {
-            case .details:
-                // A stream that never reached playback should return to the
-                // exact decision point so another source is one click away.
-                reopenStreamPickerOnDetails = !playbackDidStart && !isTrailer
-                reopenStreamPickerEpisode = reopenStreamPickerOnDetails ? playbackCurrentEpisode : nil
-                activeScreen = .details(id: meta.id, type: meta.type)
-            case .cloudLibrary:
-                activeScreen = .main
-            case .main:
-                activeScreen = (isTrailer || meta.isSeries)
-                    ? .details(id: meta.id, type: meta.type)
-                    : .main
+    /// Closes the player cover and decides what the user lands on. The screen
+    /// the player was launched from is still mounted beneath the cover, so
+    /// most origins need nothing more than the dismissal; anything that pushes
+    /// or presents afterwards is deferred to `runPendingPostPlayerAction`.
+    private func dismissPlayer(_ presentation: PlayerPresentation) {
+        let pipActive = PictureInPictureManager.shared.isPictureInPictureActive
+        switch presentation.origin {
+        case .details:
+            // A stream that never reached playback should return to the
+            // exact decision point so another source is one click away.
+            if !navigation.playbackDidStart, !presentation.isTrailer, !pipActive {
+                navigation.pendingPostPlayerAction = .reopenStreamPicker(
+                    detailsKey: presentation.detailsKey,
+                    episode: presentation.currentEpisode
+                )
             }
+        case .cloudLibrary:
+            // The cloud library is still on the stack beneath the cover.
+            break
+        case .main:
+            // A series started from a Home card lands on its Details so the
+            // next episode is one click away; a movie returns to the tab view.
+            if presentation.meta.isSeries, !pipActive,
+               navigation.topDetailsKey != presentation.detailsKey {
+                navigation.pendingPostPlayerAction = .pushDetails(
+                    id: presentation.meta.id,
+                    type: presentation.meta.type
+                )
+            }
+        }
+        navigation.player = nil
+    }
+
+    /// Runs from the player cover's `onDismiss`, once UIKit has finished the
+    /// dismissal and will accept a new push or presentation.
+    private func runPendingPostPlayerAction() {
+        guard let action = navigation.pendingPostPlayerAction else { return }
+        navigation.pendingPostPlayerAction = nil
+        switch action {
+        case let .openDetailsRoot(id, type):
+            navigation.openDetailsRoot(id: id, type: type)
+        case let .pushDetails(id, type):
+            navigation.push(.details(id: id, type: type))
+        case let .reopenStreamPicker(detailsKey, episode):
+            navigation.streamPickerRequest = StreamPickerRequest(detailsKey: detailsKey, episode: episode)
+        case let .playRecommendation(meta, playManually):
+            playRecommendedTitle(meta: meta, playManually: playManually)
+        case let .openRecommendationDetails(meta):
+            navigation.push(.details(id: meta.id, type: meta.type))
         }
     }
 }
-
 
 
 /// Shown between login and who's-watching while the first account pull is in

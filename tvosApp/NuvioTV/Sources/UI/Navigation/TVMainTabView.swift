@@ -11,8 +11,8 @@ struct TVMainTabView: View {
     @ObservedObject var homeStore: TVHomeStore
     let homeCatalogRevision: UInt
     let homeCollectionsRevision: UInt
-    let isFullScreenOverlayPresented: Bool
-    let detailsDidDisappearGeneration: UInt
+    /// True while a pushed screen or the player covers the tab view.
+    let isCovered: Bool
     let accountEmail: String?
     let isAuthenticated: Bool
     let sessionNeedsReauthentication: Bool
@@ -33,10 +33,10 @@ struct TVMainTabView: View {
     var onPlayContinueWatchingManually: ((ContinueWatchingItem) -> Void)? = nil
     var onStartContinueWatchingFromBeginning: ((ContinueWatchingItem) -> Void)? = nil
     var onRemoveFromContinueWatching: ((ContinueWatchingItem) -> Void)? = nil
-    let onLongPressCard: (NuvioMeta) -> Void
+    var onLongPressCard: ((NuvioMeta) -> Void)? = nil
     /// Long press on a Continue Watching card, which gets its own resume-centric
     /// menu instead of the generic title actions.
-    let onLongPressContinueWatching: (ContinueWatchingItem) -> Void
+    var onLongPressContinueWatching: ((ContinueWatchingItem) -> Void)? = nil
     let onOpenCloudLibrary: () -> Void
     let onPlayCloudFile: (URL, NuvioMeta) -> Void
     @AppStorage(SettingsKey.amoled) private var amoled = false
@@ -176,8 +176,7 @@ struct TVMainTabView: View {
             store: homeStore,
             repository: CinemetaCatalogRepository(),
             isActive: selectedTab == .home,
-            isFullScreenOverlayPresented: isFullScreenOverlayPresented,
-            detailsDidDisappearGeneration: detailsDidDisappearGeneration,
+            isCovered: isCovered,
             isProfileSwitching: isProfileSwitching,
             contentIdentity: TVHomeContentIdentity(
                 profileId: activeProfile?.id ?? "none",

@@ -68,8 +68,15 @@ struct TVHomeView: View {
     @ObservedObject var store: TVHomeStore
     let repository: CatalogRepository
     let isActive: Bool
-    let isFullScreenOverlayPresented: Bool
-    let detailsDidDisappearGeneration: UInt
+    /// True while a pushed screen or the player covers the tab view. Home stays
+    /// mounted and keeps its focus underneath; this only defers a catalog
+    /// reload so rows are not replaced while tvOS is restoring that focus.
+    let isCovered: Bool
+    /// Overlay-return focus restoration is native now that Home is covered by
+    /// a pushed screen rather than hidden. These keep the legacy restore path
+    /// compiled but unreachable until it is deleted.
+    private var isFullScreenOverlayPresented: Bool { false }
+    private let detailsDidDisappearGeneration: UInt = 0
     /// True while a freshly picked profile is being prepared. Keeps Home's own
     /// loader on screen for that whole beat, so the switch shows one screen
     /// instead of a cover handing over to a spinner.
@@ -127,7 +134,9 @@ struct TVHomeView: View {
     @State private var rowScrollStore = TVHomeRowScrollStore()
     /// Bumped when the rail opens; rows watch it and snap back to their first card.
     @State private var rowResetGeneration = 0
-    @State private var homeReloadTask: Task<Void, Never>?
+    /// An account sync landed while a pushed screen covered Home; the reload
+    /// runs once Home is back and focus has settled.
+    @State private var syncReloadDeferred = false
     /// Add-on/catalog settings the last completed load actually read.
     @State private var lastLoadedInputSignature: String?
     @State private var rawContinueWatchingItems: [ContinueWatchingItem] = []
@@ -231,28 +240,41 @@ struct TVHomeView: View {
     // they keep access to the view's private state.
 
     private func withLoadHandlers<Content: View>(_ content: Content) -> some View {
+        // Loads are owned by the store, not by `.task` modifiers: pushing
+        // Details fires this view's `onDisappear`, which would cancel every
+        // view-owned task and rerun it on pop, reloading Home on every return.
         content
-        .task(id: "\(contentIdentity.profileId):\(contentIdentity.catalogRevision):\(tmdbHomeSettingsKey)") {
-            await loadWithAutomaticRetry(for: contentIdentity, forceReload: true)
-            // Add-on metadata providers are configured by the time Home has
-            // loaded, so this is the pass that recovers titles an earlier sync
-            // could not resolve. Mirrors the phone's
-            // `retryMetadataResolutionWhenAddonMetaProvidersReady`.
-            await ContinueWatchingBuilder.rebuild(reason: "home loaded")
-            await ContinueWatchingStore.refreshMissingEpisodeDetails()
+        .onChange(of: "\(contentIdentity.profileId):\(contentIdentity.catalogRevision):\(tmdbHomeSettingsKey)", initial: true) { _, _ in
+            let identity = contentIdentity
+            store.run("catalog") {
+                await loadWithAutomaticRetry(for: identity, forceReload: true)
+                // Add-on metadata providers are configured by the time Home has
+                // loaded, so this is the pass that recovers titles an earlier sync
+                // could not resolve. Mirrors the phone's
+                // `retryMetadataResolutionWhenAddonMetaProvidersReady`.
+                await ContinueWatchingBuilder.rebuild(reason: "home loaded")
+                await ContinueWatchingStore.refreshMissingEpisodeDetails()
+            }
         }
-        .task(id: "\(contentIdentity.profileId):\(collectionsRevision)") {
-            await refreshCollectionSections(for: contentIdentity)
+        .onChange(of: "\(contentIdentity.profileId):\(collectionsRevision)", initial: true) { _, _ in
+            let identity = contentIdentity
+            store.run("collections") {
+                await refreshCollectionSections(for: identity)
+            }
         }
-        .task(id: "\(contentIdentity.profileId):smbLocalTitles:\(smbLocalRowEnabled)") {
-            await loadLocalTitlesSection()
+        .onChange(of: "\(contentIdentity.profileId):smbLocalTitles:\(smbLocalRowEnabled)", initial: true) { _, _ in
+            store.run("smbLocalTitles") {
+                await loadLocalTitlesSection()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: SMBLibraryIndex.changedNotification)) { _ in
             guard isActive else { return }
             Task { await loadLocalTitlesSection() }
         }
-        .task(id: "\(contentIdentity.profileId):jellyfinTitles:\(jellyfinLocalRowEnabled)") {
-            await loadJellyfinSection()
+        .onChange(of: "\(contentIdentity.profileId):jellyfinTitles:\(jellyfinLocalRowEnabled)", initial: true) { _, _ in
+            store.run("jellyfinTitles") {
+                await loadJellyfinSection()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: JellyfinLibraryIndex.changedNotification)) { _ in
             guard isActive else { return }
@@ -421,16 +443,25 @@ struct TVHomeView: View {
         // Home inputs have landed, queue one replacement load from that final
         // add-on and catalog-settings snapshot.
         .onReceive(NotificationCenter.default.publisher(for: NuvioSyncManager.homeContentSyncedNotification)) { _ in
-            guard isActive && !isFullScreenOverlayPresented else { return }
-            homeReloadTask?.cancel()
-            let identity = contentIdentity
-            homeReloadTask = Task { @MainActor in
-                await reloadHomeAfterSyncedInputs(for: identity)
+            guard isActive else { return }
+            // Replacing the rows while a pushed screen covers Home would pull
+            // the card tvOS is about to restore focus to out from under it.
+            // Hold the reload until Home is back and that focus has settled.
+            if isCovered {
+                syncReloadDeferred = true
+                return
             }
+            scheduleSyncedInputsReload(delayNanoseconds: 0)
         }
+        .onChange(of: isCovered) { _, covered in
+            guard !covered, syncReloadDeferred else { return }
+            syncReloadDeferred = false
+            scheduleSyncedInputsReload(delayNanoseconds: 1_000_000_000)
+        }
+        // Fires on every pop back to Home as well as on tab switches. Loads
+        // are store-owned, so only view-scoped work is cancelled here.
         .onDisappear {
             focusWork.cancelAll()
-            homeReloadTask?.cancel()
             continueWatchingRefreshTask?.cancel()
             continueWatchingRefreshTask = nil
             finishSimklHomeLoadingDiagnostic()
@@ -642,9 +673,9 @@ struct TVHomeView: View {
                         }
                 } else if let errorMessage, store.sections.isEmpty && continueWatching.isEmpty {
                     TVErrorView(message: errorMessage) {
-                        homeReloadTask?.cancel()
-                        homeReloadTask = Task { @MainActor in
-                            await loadWithAutomaticRetry(for: contentIdentity)
+                        let identity = contentIdentity
+                        store.run("catalog") {
+                            await loadWithAutomaticRetry(for: identity)
                         }
                     }
                 } else {
@@ -738,7 +769,6 @@ resetGeneration: rowResetGeneration,
                                                     settleFolderFocus(folder, in: section.id)
                                                 },
                                                 onSelect: { folder in
-                                                    overlayRestoreCardID = "\(section.id)\u{1}\(folder.id)"
                                                     onOpenCollectionFolder(folder, section.title)
                                                 }
                                             )
@@ -915,18 +945,6 @@ resetGeneration: rowResetGeneration,
         withAnimation(NuvioMotion.settle) { proxy.scrollTo(first, anchor: .top) }
     }
 
-    /// - Parameter heroBleed: Horizontal safe-area inset this grid sits inside.
-    ///   The scroll view gives it back so the hero backdrop runs to the physical
-    ///   screen edges; every row below re-applies it so the posters keep the
-    ///   gutter the rest of Home uses.
-    @ViewBuilder
-
-    /// Nudges focus back to `target` after an overlay dismissal, in case the
-    /// engine parked focus outside the rows (hero, sidebar) while the tab view
-    /// was still fading in. Two attempts because cards are unfocusable at
-    /// near-zero opacity; the trailing clear lifts the card restriction even
-    /// if the saved card no longer exists (e.g. Continue Watching reordered),
-    /// so the rows can never be left permanently unfocusable.
     /// The meta id inside a Continue Watching or Upcoming card key, or nil for any other row.
     private func continueWatchingMetaID(inCardKey key: String) -> String? {
         let cwPrefix = "\(TVHomeSection.continueWatchingId)\u{1}"
@@ -1218,10 +1236,9 @@ resetGeneration: rowResetGeneration,
         type: String,
         restoreCardID: String? = nil
     ) {
-        focusWork.defersOverlayPreparation = true
-        focusWork.pendingOverlayRestoreCardID = restoreCardID
-            ?? focusedCardID
-            ?? store.lastFocusedCardID
+        // Home stays mounted and focused beneath the pushed Details, so there
+        // is nothing to capture: tvOS restores the card on pop.
+        _ = restoreCardID
         onNavigateToDetails(id, type)
     }
 
@@ -1528,6 +1545,19 @@ resetGeneration: rowResetGeneration,
     }
 
     @MainActor
+    /// Queues the post-sync replacement load on the store, optionally after a
+    /// delay so a just-restored focus can settle before rows are replaced.
+    private func scheduleSyncedInputsReload(delayNanoseconds: UInt64) {
+        let identity = contentIdentity
+        store.run("syncReload") {
+            if delayNanoseconds > 0 {
+                try? await Task.sleep(nanoseconds: delayNanoseconds)
+                guard !Task.isCancelled else { return }
+            }
+            await reloadHomeAfterSyncedInputs(for: identity)
+        }
+    }
+
     private func reloadHomeAfterSyncedInputs(for identity: TVHomeContentIdentity) async {
         guard identity.profileId != "none" && !identity.profileId.isEmpty else { return }
         // Do not overlap the revision-owned load. Waiting preserves its useful

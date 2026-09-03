@@ -89,6 +89,25 @@ final class TVHomeStore: ObservableObject {
     private var loadedContentIdentity: TVHomeContentIdentity?
     private var loadingContentIdentity: TVHomeContentIdentity?
     private var loadGeneration: UInt = 0
+    /// Screen-scoped work keyed by purpose ("catalog", "collections", ...).
+    /// Owned here rather than by `.task` modifiers on the Home view: pushing
+    /// Details on the navigation stack fires Home's `onDisappear`, which would
+    /// cancel every view-owned task and rerun it on pop, reloading Home on
+    /// every return.
+    private var tasks: [String: Task<Void, Never>] = [:]
+
+    /// Runs `operation` under `key`, cancelling whatever ran under it before.
+    func run(_ key: String, _ operation: @escaping @MainActor () async -> Void) {
+        tasks[key]?.cancel()
+        tasks[key] = Task { @MainActor in
+            await operation()
+        }
+    }
+
+    func cancel(_ key: String) {
+        tasks[key]?.cancel()
+        tasks[key] = nil
+    }
 
     func isLoaded(for identity: TVHomeContentIdentity) -> Bool {
         hasLoaded && loadedContentIdentity == identity
@@ -142,6 +161,8 @@ final class TVHomeStore: ObservableObject {
     }
 
     func reset() {
+        for task in tasks.values { task.cancel() }
+        tasks.removeAll()
         loadGeneration &+= 1
         sections = []
         hero = nil
