@@ -3096,9 +3096,7 @@ private struct TvDetailsRelatedRow: View {
     let onFocus: () -> Void
 
     @State private var scrollIndex = 0
-    @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
     private let smoothFocus = true
-    @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     private var cardWidth: CGFloat { 210 }
     private var cardHeight: CGFloat { 315 }
@@ -3121,10 +3119,7 @@ private struct TvDetailsRelatedRow: View {
                         onFocus: { _ in
                             if scrollIndex != index { scrollIndex = index }
                             onFocus()
-                        },
-                        showPosterLabels: posterLabels,
-                        smoothFocusAnimations: smoothFocus,
-                        focusHighlighterEnabled: focusHighlighter
+                        }
                     ) {
                         onSelect(item)
                     }

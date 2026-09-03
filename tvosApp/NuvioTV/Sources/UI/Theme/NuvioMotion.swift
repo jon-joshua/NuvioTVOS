@@ -8,6 +8,9 @@ enum NuvioMotion {
     static let focus: Animation = .easeOut(duration: 0.14)
     /// A card growing on focus.
     static let focusScale: Animation = .spring(response: 0.28, dampingFraction: 0.75)
+    /// A card changing size in place, such as Home widening to landscape art.
+    /// Critically damped: no overshoot.
+    static let expand: Animation = .spring(response: 0.30, dampingFraction: 1.0)
     /// A row pinning the focused card. Per press, so it must feel immediate.
     static let scroll: Animation = .easeOut(duration: 0.22)
     /// The navigation rail opening or closing, and the page shifting with it.

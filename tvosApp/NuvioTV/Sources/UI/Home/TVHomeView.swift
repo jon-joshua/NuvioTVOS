@@ -749,7 +749,6 @@ resetGeneration: rowResetGeneration,
                                                         )
                                                     }
                                                 },
-                                                onLongPress: longPressHandler(for: section.id),
                                                 onOpenDetails: { meta in
                                                     let cardKey = "\(section.id)\u{1}\(meta.id)"
                                                     navigateToDetailsFromHome(
@@ -1041,24 +1040,6 @@ resetGeneration: rowResetGeneration,
                 today: today,
                 transform: trimmed
             )
-    }
-
-    /// Held cards in the Continue Watching / Upcoming row open the resume menu; every other
-    /// row keeps the generic title menu. A Continue Watching card whose entry has
-    /// since gone (the row refreshed mid-press) falls back rather than doing
-    /// nothing.
-    private func longPressHandler(for sectionId: String) -> ((NuvioMeta) -> Void)? {
-        guard (sectionId == TVHomeSection.continueWatchingId || sectionId == TVHomeSection.upcomingId),
-              let onLongPressContinueWatching else {
-            return onLongPressCard
-        }
-        return { meta in
-            if let item = continueWatchingByMetaId[meta.id] {
-                onLongPressContinueWatching(item)
-            } else {
-                onLongPressCard?(meta)
-            }
-        }
     }
 
     /// Continue Watching context for the hero — only when the focused card is

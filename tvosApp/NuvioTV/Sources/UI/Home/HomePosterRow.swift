@@ -12,7 +12,6 @@ struct TVLoadingCatalogRow: View {
     let title: String
 
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
-    private let liquidGlassCards = true
 
     private let cardWidth: CGFloat = 210
     private let cardHeight: CGFloat = 315
@@ -40,11 +39,7 @@ struct TVLoadingCatalogRow: View {
                     // Enough to run past the right edge at either card size, so
                     // the strip reads as a row rather than a few loose tiles.
                     ForEach(0..<9, id: \.self) { _ in
-                        LoadingPosterCard(
-                            width: cardWidth,
-                            height: cardHeight,
-                            isLiquidGlassEnabled: liquidGlassCards
-                        )
+                        LoadingPosterCard(width: cardWidth, height: cardHeight)
                     }
                 }
                 .padding(.leading, TVLayout.rowLeading)
@@ -85,7 +80,6 @@ struct HomePosterRow: View {
     let onBlur: (NuvioMeta) -> Void
     let onApproachEnd: (NuvioMeta) -> Void
     let onSelect: (NuvioMeta) -> Void
-    var onLongPress: ((NuvioMeta) -> Void)? = nil
     var onOpenDetails: ((NuvioMeta) -> Void)? = nil
     var onPlayContinueWatchingManually: ((ContinueWatchingItem) -> Void)? = nil
     var onStartContinueWatchingFromBeginning: ((ContinueWatchingItem) -> Void)? = nil
@@ -96,7 +90,6 @@ struct HomePosterRow: View {
     @State private var leadingCardID: String?
     @AppStorage(SettingsKey.posterLabels) private var posterLabels = false
     private let smoothFocus = true
-    @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
 
     private var compactPosterWidth: CGFloat {
         210
@@ -230,7 +223,6 @@ struct HomePosterRow: View {
             onBlur: onBlur,
             externalFocus: externalFocus,
             externalFocusValue: cardKey,
-            onLongPress: onLongPress,
             onOpenDetails: onOpenDetails != nil ? { onOpenDetails?(item) } : nil,
             onPlayManually: ((id == TVHomeSection.continueWatchingId || id == TVHomeSection.upcomingId) && progressItem != nil) ? {
                 if let p = progressItem { onPlayContinueWatchingManually?(p) }
@@ -241,10 +233,6 @@ struct HomePosterRow: View {
             onRemoveFromContinueWatching: ((id == TVHomeSection.continueWatchingId || id == TVHomeSection.upcomingId) && progressItem != nil) ? {
                 if let p = progressItem { onRemoveFromContinueWatching?(p) }
             } : nil,
-            showPosterLabels: posterLabels,
-            smoothFocusAnimations: cardFocusAnimations,
-            focusHighlighterEnabled: focusHighlighter,
-            allowsFocus: true,
             isWatched: isWatched(item)
         ) {
             onSelect(item)

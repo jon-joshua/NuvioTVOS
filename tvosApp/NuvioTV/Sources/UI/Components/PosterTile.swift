@@ -14,6 +14,8 @@ struct PosterTile<Overlay: View>: View {
     var artworkURL: String? = nil
     /// Artwork to decode ahead of a swap (Home's landscape art).
     var preloadURL: String? = nil
+    /// Decode width for the preload when it will be shown wider than `size`.
+    var preloadMaximumWidth: CGFloat? = nil
     /// Called when the preload has been decoded, or has failed.
     var onPreloadFinished: () -> Void = {}
     var size = CGSize(width: 210, height: 315)
@@ -52,6 +54,7 @@ struct PosterTile<Overlay: View>: View {
                     width: size.width,
                     height: size.height,
                     maximumWidth: size.width,
+                    preloadMaximumWidth: preloadMaximumWidth,
                     minimumSwapDelay: 0,
                     onPreloadFinished: onPreloadFinished
                 ) {

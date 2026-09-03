@@ -96,7 +96,9 @@ enum AppCardStyle {
     }
 }
 
-/// Poster card component with focus animation (tvOS) and tap handling (iOS)
+/// Home's row card: a `PosterTile` that widens to landscape art while focus
+/// rests on it and, after a delay, plays a trailer inside the card. Everything
+/// it draws goes through the tile; this struct only owns the Home behaviour.
 struct PosterCard: View {
     let meta: NuvioMeta
     var isLandscape: Bool = false
@@ -118,270 +120,139 @@ struct PosterCard: View {
     var onFocus: ((NuvioMeta) -> Void)? = nil
     var onBlur: ((NuvioMeta) -> Void)? = nil
     /// Optional shared focus state so a parent can drive `.defaultFocus`
-    /// restoration — e.g. returning to the exact card after the menu. Keyed by
-    /// `externalFocusValue` (must be unique per card instance, since the same
-    /// meta.id can appear in more than one row), falling back to meta.id.
+    /// restoration. Keyed by `externalFocusValue` (unique per card instance,
+    /// since the same meta.id can appear in more than one row), falling back
+    /// to meta.id.
     var externalFocus: FocusState<String?>.Binding? = nil
     var externalFocusValue: String? = nil
-    /// Fired when the card is held (Siri Remote select press-and-hold), to raise
-    /// the quick-actions menu. Nil disables the long-press.
-    var onLongPress: ((NuvioMeta) -> Void)? = nil
     var onOpenDetails: (() -> Void)? = nil
     var onPlayManually: (() -> Void)? = nil
     var onStartFromBeginning: (() -> Void)? = nil
     var onRemoveFromContinueWatching: (() -> Void)? = nil
-    var showPosterLabels: Bool = false
-    var smoothFocusAnimations: Bool = true
-    var focusHighlighterEnabled: Bool = false
-    /// Lets Home retain off-window artwork without leaving every card in the
-    /// tvOS focus graph.
-    var allowsFocus: Bool = true
     var isWatched: Bool? = nil
     let onClick: () -> Void
 
-    private let landscapeTransitionDuration: TimeInterval = 0.3
+    private static let portraitWidth: CGFloat = 210
+    private static let landscapeWidth: CGFloat = 560
+    private static let height: CGFloat = 315
 
-    #if os(tvOS)
-    @FocusState private var isFocused: Bool
-    @State private var didRequestInitialFocus = false
+    /// Mirrors the tile's focus so the trailer and preload tasks can key on it.
+    @State private var isFocused = false
     @State private var landscapeArtworkPrepared = false
-    @AppStorage(SettingsKey.trailersEnabled) private var trailersEnabled = true
-    @AppStorage(SettingsKey.trailerDelay) private var trailerDelay = 7
-    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    private let liquidGlassCards = true
-    @State private var isTrailerPreviewActive = false
-    @State private var isTrailerPreviewReady = false
-    @State private var didFinishTrailerPreview = false
     /// Rapid navigation should not start a separate backdrop/episode-art decode
     /// for every card passed over. Arm that preload only after focus has settled,
     /// matching Home's hero debounce.
     @State private var landscapePreloadArmed = false
-    #else
-    private let cardCornerRadiusSetting = AppCardStyle.defaultCornerRadiusRaw
-    private let liquidGlassCards = true
-    #endif
+    @State private var isTrailerPreviewActive = false
+    @State private var isTrailerPreviewReady = false
+    @State private var didFinishTrailerPreview = false
+    @AppStorage(SettingsKey.trailersEnabled) private var trailersEnabled = true
+    @AppStorage(SettingsKey.trailerDelay) private var trailerDelay = 7
 
     var body: some View {
-        #if os(tvOS)
-        Button(action: onClick) {
-            // Equality boundary owned by the card itself: parents rebuild this
-            // value with fresh closures on every focus move, so without it every
-            // realized card in the row re-ran its body per remote press.
-            PosterCardRenderGate(key: renderKey) { posterContent }
-                .equatable()
-        }
-        .buttonStyle(PosterCardButtonStyle())
-        .disabled(!allowsFocus)
-        .focused($isFocused)
-        .modifier(ExternalFocusBinding(binding: externalFocus, id: externalFocusValue ?? meta.id))
-        .nuvioFocusEffectDisabledIfAvailable()
-        .titleActionsContextMenu(
+        PosterTile(
             meta: meta,
-            onOpenDetails: onOpenDetails ?? onClick,
-            continueProgress: continueProgress,
-            continueIsUpNext: continueIsUpNext,
-            onPlayManually: onPlayManually,
-            onStartFromBeginning: onStartFromBeginning,
-            onRemoveFromContinueWatching: onRemoveFromContinueWatching
+            artworkURL: effectiveLandscape ? landscapeArtworkURL : meta.posterUrl,
+            preloadURL: landscapePreloadURL,
+            preloadMaximumWidth: Self.landscapeWidth,
+            onPreloadFinished: { landscapeArtworkPrepared = true },
+            size: CGSize(width: effectiveLandscape ? Self.landscapeWidth : Self.portraitWidth, height: Self.height),
+            watched: watchedState,
+            progress: continueIsUpNext ? nil : continueProgress,
+            badge: PosterBadge.make(
+                isUpNext: continueIsUpNext,
+                upNextText: continueUpNextBadgeText,
+                episodeText: continueEpisodeText,
+                remainingText: continueRemainingText
+            ),
+            caption: PosterCaption(title: meta.name),
+            externalFocus: externalFocus,
+            focusValue: externalFocusValue,
+            shouldRequestInitialFocus: shouldRequestInitialFocus,
+            onInitialFocusRequested: onInitialFocusRequested,
+            onFocusChange: handleFocusChange,
+            contextActions: TitleActions(
+                onOpenDetails: onOpenDetails ?? onClick,
+                continueProgress: continueProgress,
+                continueIsUpNext: continueIsUpNext,
+                onPlayManually: onPlayManually,
+                onStartFromBeginning: onStartFromBeginning,
+                onRemoveFromContinueWatching: onRemoveFromContinueWatching
+            ),
+            overlay: { overlayContent },
+            action: onClick
         )
-            .onChange(of: isFocused) { _, focused in
-                if focused {
-                    onFocus?(meta)
-                    if didFinishTrailerPreview { didFinishTrailerPreview = false }
-                } else {
-                    if landscapePreloadArmed { landscapePreloadArmed = false }
-                    cancelTrailerPreview()
-                    onBlur?(meta)
-                }
-            }
-            // A task keyed to the real rendered state cannot miss the landscape
-            // transition. It is cancelled automatically if focus/landscape or
-            // the setting changes before the full delay has elapsed.
-            .task(id: trailerActivationIdentity) {
-                await activateTrailerPreviewAfterDelay()
-            }
-            .onDisappear(perform: cancelTrailerPreview)
-            .task(id: isFocused) {
-                guard isFocused else { return }
-                do {
-                    try await Task.sleep(nanoseconds: 300_000_000)
-                } catch {
-                    return
-                }
-                guard !Task.isCancelled, isFocused else { return }
-                landscapePreloadArmed = true
-                TVHomeDebugTrace.log(
-                    "card.preload.arm meta=\(meta.id) landscapeURL=\(landscapeArtworkURL != nil) "
-                        + "episodeArt=\(continueEpisodeArtworkURL != nil)"
-                )
-            }
-            .onAppear {
-                guard shouldRequestInitialFocus, !didRequestInitialFocus else {
-                    return
-                }
-
-                didRequestInitialFocus = true
-                onInitialFocusRequested?()
-                DispatchQueue.main.async {
-                    isFocused = true
-                }
-            }
-            // The row cell takes the full (landscape) width so neighbouring
-            // cards are pushed aside rather than overlapped, while the focusable
-            // surface stays portrait-width — keeping up/down navigation aligned.
-            .frame(width: cardWidth, height: totalCardHeight, alignment: .topLeading)
-            // Critically damped — no overshoot when expanding to landscape on Home.
-            .animation(
-                effectiveSmoothFocus
-                    ? .spring(response: landscapeTransitionDuration, dampingFraction: 1.0)
-                    : nil,
-                value: effectiveLandscape
-            )
-        #else
-        Button(action: onClick) {
-            posterContent
+        // Critically damped: no overshoot when widening to landscape.
+        .animation(NuvioMotion.expand, value: effectiveLandscape)
+        // A task keyed to the real rendered state cannot miss the landscape
+        // transition. It is cancelled automatically if focus/landscape or
+        // the setting changes before the full delay has elapsed.
+        .task(id: trailerActivationIdentity) {
+            await activateTrailerPreviewAfterDelay()
         }
-        .buttonStyle(PosterCardButtonStyle())
-        .titleActionsContextMenu(
-            meta: meta,
-            onOpenDetails: onOpenDetails ?? onClick,
-            continueProgress: continueProgress,
-            continueIsUpNext: continueIsUpNext,
-            onPlayManually: onPlayManually,
-            onStartFromBeginning: onStartFromBeginning,
-            onRemoveFromContinueWatching: onRemoveFromContinueWatching
-        )
-        .frame(width: cardWidth, height: totalCardHeight, alignment: .topLeading)
-        #endif
-    }
-
-    private var posterContent: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            CachedPosterArtwork(
-                urlString: imageUrl,
-                preloadURLString: landscapePreloadURL,
-                width: cardWidth,
-                height: cardHeight,
-                maximumWidth: artworkDecodeWidth,
-                preloadMaximumWidth: landscapeArtworkDecodeWidth,
-                minimumSwapDelay: 0,
-                onPreloadFinished: {
-                    #if os(tvOS)
-                    landscapeArtworkPrepared = true
-                    #endif
-                }
-            ) {
-                placeholderView
+        .task(id: isFocused) {
+            guard isFocused else { return }
+            do {
+                try await Task.sleep(nanoseconds: 300_000_000)
+            } catch {
+                return
             }
-            .frame(width: cardWidth, height: cardHeight)
-            #if os(tvOS)
-            // Cross-fade the landscape artwork away only once the resolved
-            // trailer is ready to draw, avoiding a black frame on slow links.
-            .opacity(isTrailerPreviewVisible ? 0 : 1)
-            .overlay {
-                // Mount only once focus has settled (the same 300 ms arm as the
-                // landscape preload). Activation is always at least a second
-                // away, so resolution still finishes ahead of playback; cards
-                // merely passed over never allocate a player or hit the network.
-                if isFocused && landscapePreloadArmed && trailersEnabled && !isContinueOrUpcomingCard && !didFinishTrailerPreview {
-                    TrailerPreviewPlayer(
-                        meta: meta,
-                        isActive: isTrailerPreviewActive,
-                        onPlaybackReady: {
-                            guard isTrailerPreviewActive else { return }
-                            isTrailerPreviewReady = true
-                        },
-                        onPlaybackFinished: finishTrailerPreview
-                    )
-                    .transition(.opacity)
-                }
-            }
-            .animation(.easeInOut(duration: 0.32), value: isTrailerPreviewVisible)
-            .animation(.easeInOut(duration: 0.32), value: didFinishTrailerPreview)
-            #endif
-            .overlay(alignment: .bottomLeading) {
-                if effectiveLandscape {
-                    landscapeOverlay
-                        #if os(tvOS)
-                        .opacity(isTrailerPreviewVisible ? 0 : 1)
-                        #endif
-                }
-            }
-            .overlay(alignment: .bottomLeading) {
-                continueProgressOverlay
-            }
-            .overlay(alignment: .topTrailing) {
-                continueBadge
-            }
-            .overlay(alignment: .topTrailing) {
-                if showsWatchedBadge {
-                    if let isWatched {
-                        if isWatched {
-                            WatchedCheckmarkIcon()
-                        }
-                    } else {
-                        WatchedCheckmarkBadge(meta: meta)
-                    }
-                }
-            }
-            // Mask the complete card interior after composing both the trailer
-            // and landscape artwork overlays. The focus border remains outside
-            // this mask so its stroke stays crisp.
-            .clipShape(RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
-            .modifier(
-                LiquidGlassCardModifier(
-                    cornerRadius: cardCornerRadius,
-                    isFocused: showsFocusedAppearance,
-                    isEnabled: liquidGlassCards
-                )
+            guard !Task.isCancelled, isFocused else { return }
+            landscapePreloadArmed = true
+            TVHomeDebugTrace.log(
+                "card.preload.arm meta=\(meta.id) landscapeURL=\(landscapeArtworkURL != nil) "
+                    + "episodeArt=\(continueEpisodeArtworkURL != nil)"
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-                    .stroke(focusedBorderColor, lineWidth: focusedBorderWidth)
-            )
-            .shadow(color: .black.opacity(shadowOpacity), radius: shadowRadius)
-
-            if showsPosterTitle {
-                Text(meta.name)
-                    .font(.system(size: 20, weight: showsFocusedAppearance ? .semibold : .medium))
-                    .foregroundColor(titleColor)
-                    .lineLimit(1)
-                    .frame(width: cardWidth, alignment: .leading)
-            }
         }
-        .frame(width: layoutWidth, height: totalCardHeight, alignment: .topLeading)
+        .onDisappear(perform: cancelTrailerPreview)
     }
 
-    // MARK: - Helper Views
+    // MARK: - Overlay
 
-    private var placeholderView: some View {
-        ArtworkPlaceholder(
-            hasArtworkURL: imageUrl?.isEmpty == false,
-            cornerRadius: cardCornerRadius
-        )
-    }
-
+    /// Landscape gradient with the title logo or Continue Watching summary,
+    /// and the trailer above it once it is ready to draw.
     @ViewBuilder
+    private var overlayContent: some View {
+        ZStack(alignment: .bottomLeading) {
+            if effectiveLandscape {
+                landscapeOverlay
+                    .opacity(isTrailerPreviewVisible ? 0 : 1)
+            }
+            // Mount only once focus has settled (the same 300 ms arm as the
+            // landscape preload). Activation is always at least a second away,
+            // so resolution still finishes ahead of playback; cards merely
+            // passed over never allocate a player or hit the network.
+            if isFocused && landscapePreloadArmed && trailersEnabled && !isContinueOrUpcomingCard && !didFinishTrailerPreview {
+                TrailerPreviewPlayer(
+                    meta: meta,
+                    isActive: isTrailerPreviewActive,
+                    onPlaybackReady: {
+                        guard isTrailerPreviewActive else { return }
+                        isTrailerPreviewReady = true
+                    },
+                    onPlaybackFinished: finishTrailerPreview
+                )
+                // Fade in only once the resolved trailer is ready to draw,
+                // avoiding a black frame on slow links.
+                .opacity(isTrailerPreviewVisible ? 1 : 0)
+            }
+        }
+        .animation(.easeInOut(duration: 0.32), value: isTrailerPreviewVisible)
+        .animation(.easeInOut(duration: 0.32), value: didFinishTrailerPreview)
+    }
+
     private var landscapeOverlay: some View {
         ZStack(alignment: .bottomLeading) {
-            if liquidGlassCards {
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.0),
-                        .init(color: .black.opacity(0.38), location: 0.35),
-                        .init(color: .black.opacity(0.85), location: 0.85),
-                        .init(color: .black.opacity(0.95), location: 1.0)
-                    ],
-                    startPoint: .center,
-                    endPoint: .bottom
-                )
-            } else {
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.78)],
-                    startPoint: .center,
-                    endPoint: .bottom
-                )
-            }
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.0),
+                    .init(color: .black.opacity(0.38), location: 0.35),
+                    .init(color: .black.opacity(0.85), location: 0.85),
+                    .init(color: .black.opacity(0.95), location: 1.0)
+                ],
+                startPoint: .center,
+                endPoint: .bottom
+            )
 
             if continueEpisodeText != nil {
                 continueLandscapeSummary
@@ -395,11 +266,11 @@ struct PosterCard: View {
                         fallbackTitle
                     }
                 }
-                .frame(width: landscapeLogoWidth, height: landscapeLogoHeight, alignment: .leading)
+                .frame(width: 275, height: 84, alignment: .leading)
                 .padding(22)
             } else {
                 fallbackTitle
-                    .frame(maxWidth: cardWidth * 0.62, alignment: .leading)
+                    .frame(maxWidth: Self.landscapeWidth * 0.62, alignment: .leading)
                     .padding(22)
             }
         }
@@ -428,7 +299,7 @@ struct PosterCard: View {
                     .minimumScaleFactor(0.82)
             }
         }
-        .frame(maxWidth: cardWidth * 0.70, alignment: .leading)
+        .frame(maxWidth: Self.landscapeWidth * 0.70, alignment: .leading)
         .padding(EdgeInsets(top: 22, leading: 22, bottom: 54, trailing: 22))
     }
 
@@ -440,7 +311,7 @@ struct PosterCard: View {
     }
 
     /// Source title logo trimmed of surrounding whitespace, or nil when blank
-    /// or not a valid URL — in which case `landscapeOverlay` shows the title
+    /// or not a valid URL, in which case `landscapeOverlay` shows the title
     /// text fallback.
     private var landscapeLogoURL: URL? {
         guard let raw = meta.logoUrl?
@@ -451,192 +322,29 @@ struct PosterCard: View {
         return URL(string: raw)
     }
 
-    @ViewBuilder
-    private var continueBadge: some View {
-        if let continueBadgeDisplayText {
-            let badgeRadius = AppCardStyle.badgeCornerRadius(for: cardCornerRadiusSetting, base: 10)
-            Text(continueBadgeDisplayText)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundColor(.white)
-                .lineLimit(1)
-                .minimumScaleFactor(0.65)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background {
-                    if liquidGlassCards {
-                        RoundedRectangle(cornerRadius: badgeRadius, style: .continuous)
-                            .fill(continueBadgeFill.opacity(0.75))
-                            .modifier(
-                                LiquidGlassBadgeModifier(
-                                    cornerRadius: badgeRadius,
-                                    isFocused: showsFocusedAppearance
-                                )
-                            )
-                    } else {
-                        RoundedRectangle(cornerRadius: badgeRadius, style: .continuous)
-                            .fill(continueBadgeFill)
-                    }
-                }
-                .padding(16)
-        }
-    }
+    // MARK: - State
 
-    private var continueBadgeFill: Color {
-        guard continueIsUpNext else { return Color.black.opacity(0.72) }
-        let badge = (continueUpNextBadgeText ?? "Next Up").uppercased()
-        if badge == "NEW SEASON" {
-            return Color(red: 0xB4 / 255, green: 0x53 / 255, blue: 0x09 / 255)
-        } else if badge == "NEW EPISODE" {
-            return Color(red: 0x1D / 255, green: 0x4E / 255, blue: 0xD8 / 255)
-        } else if badge == "AIRING TODAY" {
-            return Color(red: 0x05 / 255, green: 0x96 / 255, blue: 0x69 / 255)
-        } else if badge.hasPrefix("AIRS IN") || badge == "COMING SOON" {
-            return Color(red: 0x47 / 255, green: 0x55 / 255, blue: 0x69 / 255)
-        } else {
-            return Color.black.opacity(0.72)
-        }
-    }
-
-    private var continueBadgeDisplayText: String? {
-        if continueIsUpNext { return continueUpNextBadgeText ?? "Next Up" }
-        guard let continueRemainingText else { return nil }
-        if let continueEpisodeText {
-            return "\(continueEpisodeText) • \(continueRemainingText)"
-        }
-        return continueRemainingText
-    }
-
-    @ViewBuilder
-    private var continueProgressOverlay: some View {
-        if let continueProgress, !continueIsUpNext {
-            let progress = CGFloat(min(max(continueProgress, 0), 1))
-            let width = max(0, cardWidth - 44)
-
-            VStack {
-                Spacer(minLength: 0)
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.white.opacity(0.38))
-                        .frame(width: width, height: 8)
-
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: max(8, width * progress), height: 8)
-                }
-                .padding(.leading, 22)
-                .padding(.bottom, 16)
-            }
-            .frame(width: cardWidth, height: cardHeight, alignment: .bottomLeading)
-        }
-    }
-
-    // MARK: - Computed Properties
-
-    #if os(tvOS)
-
-    private var effectivePosterLabels: Bool {
-        showPosterLabels
-    }
-
-    private var effectiveSmoothFocus: Bool {
-        smoothFocusAnimations
-    }
-
-    private var effectiveFocusHighlighter: Bool {
-        focusHighlighterEnabled
+    private var watchedState: PosterWatched {
+        guard showsWatchedBadge else { return .hidden }
+        if let isWatched { return .resolved(isWatched) }
+        return .lookup
     }
 
     private var effectiveLandscape: Bool {
         isLandscape && (landscapeArtworkPrepared || landscapeArtworkURL == nil)
     }
 
-    private var cardWidth: CGFloat {
-        if effectiveLandscape {
-            return 560
-        }
-        return 210
-    }
-
-    /// Width the card occupies in the row layout — and therefore its focus
-    /// frame. Always the portrait width, even while the landscape art is shown,
-    /// so a focused landscape card does NOT widen its focus region and bump
-    /// vertical navigation onto the neighbouring column. The 560pt landscape art
-    /// overflows this frame to the right and is drawn above siblings (zIndex).
-    private var layoutWidth: CGFloat {
-        210
-    }
-
-    private var cardHeight: CGFloat {
-        effectiveLandscape ? 315 : 315
-    }
-
-    private var totalCardHeight: CGFloat {
-        cardHeight + (showsPosterTitle ? 36 : 0)
-    }
-
-    private var landscapeLogoWidth: CGFloat {
-        275
-    }
-
-    private var landscapeLogoHeight: CGFloat {
-        84
-    }
-
-    private var cardCornerRadius: CGFloat {
-        AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 16)
-    }
-
     private var landscapeArtworkURL: String? {
-        if continueEpisodeText != nil,
-           let continueEpisodeArtworkURL, !continueEpisodeArtworkURL.isEmpty {
-            return continueEpisodeArtworkURL
-        }
-        return meta.backgroundUrl ?? meta.posterUrl
-    }
-
-    private var imageUrl: String? {
-        effectiveLandscape ? landscapeArtworkURL : meta.posterUrl
+        PosterArtworkChoice.landscapeURL(
+            episodeText: continueEpisodeText,
+            episodeArtworkURL: continueEpisodeArtworkURL,
+            backgroundURL: meta.backgroundUrl,
+            posterURL: meta.posterUrl
+        )
     }
 
     private var landscapePreloadURL: String? {
         landscapePreloadArmed || isLandscape ? landscapeArtworkURL : nil
-    }
-
-    private var artworkDecodeWidth: CGFloat {
-        effectiveLandscape ? 560 : cardWidth
-    }
-
-    private var landscapeArtworkDecodeWidth: CGFloat {
-        560
-    }
-
-    private var focusedBorderColor: Color {
-        guard showsFocusedAppearance else { return .clear }
-        return AppFocusOutline.color
-    }
-
-    private var focusedBorderWidth: CGFloat {
-        showsFocusedAppearance ? (effectiveFocusHighlighter ? AppFocusOutline.emphasizedWidth : AppFocusOutline.width) : 0
-    }
-
-    private var shadowOpacity: Double {
-        showsFocusedAppearance ? 0.24 : 0.12
-    }
-
-    private var shadowRadius: CGFloat {
-        showsFocusedAppearance ? 10 : 4
-    }
-
-    private var titleColor: Color {
-        showsFocusedAppearance ? .white : .white.opacity(0.55)
-    }
-
-    private var showsFocusedAppearance: Bool {
-        isFocused
-    }
-
-    private var showsPosterTitle: Bool {
-        effectivePosterLabels
     }
 
     private var isContinueOrUpcomingCard: Bool {
@@ -647,27 +355,20 @@ struct PosterCard: View {
         "\(isFocused)\u{1f}\(effectiveLandscape)\u{1f}\(trailersEnabled)\u{1f}\(trailerDelay)\u{1f}\(isContinueOrUpcomingCard)"
     }
 
-    /// Everything `posterContent` reads. Keep it complete: the render gate reuses
-    /// the retained poster subtree whenever this key is unchanged, so a value
-    /// missing here would be drawn stale.
-    private var renderKey: PosterCardRenderKey {
-        PosterCardRenderKey(
-            base: staticKey,
-            isFocused: isFocused,
-            landscapeArtworkPrepared: landscapeArtworkPrepared,
-            landscapePreloadArmed: landscapePreloadArmed,
-            cardCornerRadiusSetting: cardCornerRadiusSetting,
-            liquidGlassCards: liquidGlassCards,
-            trailersEnabled: trailersEnabled,
-            trailerDelay: trailerDelay,
-            isTrailerPreviewActive: isTrailerPreviewActive,
-            isTrailerPreviewReady: isTrailerPreviewReady,
-            didFinishTrailerPreview: didFinishTrailerPreview
-        )
-    }
-
     private var isTrailerPreviewVisible: Bool {
         !isContinueOrUpcomingCard && isTrailerPreviewActive && isTrailerPreviewReady && !didFinishTrailerPreview
+    }
+
+    private func handleFocusChange(_ focused: Bool) {
+        isFocused = focused
+        if focused {
+            onFocus?(meta)
+            if didFinishTrailerPreview { didFinishTrailerPreview = false }
+        } else {
+            if landscapePreloadArmed { landscapePreloadArmed = false }
+            cancelTrailerPreview()
+            onBlur?(meta)
+        }
     }
 
     @MainActor
@@ -702,85 +403,11 @@ struct PosterCard: View {
         isTrailerPreviewReady = false
         didFinishTrailerPreview = true
     }
-    #else
-    private var cardWidth: CGFloat {
-        150
-    }
-
-    private var layoutWidth: CGFloat {
-        150
-    }
-
-    private var cardHeight: CGFloat {
-        225
-    }
-
-    private var cardCornerRadius: CGFloat {
-        AppCardStyle.cornerRadius(for: cardCornerRadiusSetting, fallback: 8)
-    }
-
-    private var landscapeLogoWidth: CGFloat {
-        0
-    }
-
-    private var landscapeLogoHeight: CGFloat {
-        0
-    }
-
-    private var imageUrl: String? {
-        meta.posterUrl
-    }
-
-    private var landscapePreloadURL: String? {
-        nil
-    }
-
-    private var artworkDecodeWidth: CGFloat {
-        cardWidth
-    }
-
-    private var landscapeArtworkDecodeWidth: CGFloat {
-        cardWidth
-    }
-
-    private var effectiveLandscape: Bool {
-        false
-    }
-
-    private var focusedBorderColor: Color {
-        .clear
-    }
-
-    private var focusedBorderWidth: CGFloat {
-        0
-    }
-
-    private var shadowOpacity: Double {
-        0.2
-    }
-
-    private var shadowRadius: CGFloat {
-        4
-    }
-
-    private var titleColor: Color {
-        .primary
-    }
-
-    private var totalCardHeight: CGFloat {
-        cardHeight
-    }
-
-    private var showsPosterTitle: Bool {
-        false
-    }
-    #endif
 }
 
 /// Every call-site value the card draws, with closures reduced to presence.
-/// Single source of truth for `PosterCard.==` and for the in-card render gate,
-/// so there is one list to keep complete. Numeric and optional-text inputs are
-/// stringified so the key does not depend on their exact model types.
+/// Numeric and optional-text inputs are stringified so the key does not depend
+/// on their exact model types.
 struct PosterCardStaticKey: Equatable {
     let metaID: String
     let metaName: String
@@ -804,15 +431,10 @@ struct PosterCardStaticKey: Equatable {
     let isWatched: Bool?
     let shouldRequestInitialFocus: Bool
     let externalFocusValue: String?
-    let hasOnLongPress: Bool
     let hasOnOpenDetails: Bool
     let hasOnPlayManually: Bool
     let hasOnStartFromBeginning: Bool
     let hasOnRemoveFromContinueWatching: Bool
-    let showPosterLabels: Bool
-    let smoothFocusAnimations: Bool
-    let focusHighlighterEnabled: Bool
-    let allowsFocus: Bool
 }
 
 extension PosterCard {
@@ -830,80 +452,32 @@ extension PosterCard {
             trailerYtIds: meta.trailerYtIds,
             isLandscape: isLandscape,
             continueProgress: continueProgress.map { "\($0)" },
-            continueRemainingText: continueRemainingText.map { "\($0)" },
-            continueEpisodeText: continueEpisodeText.map { "\($0)" },
-            continueEpisodeTitleText: continueEpisodeTitleText.map { "\($0)" },
-            continueEpisodeArtworkURL: continueEpisodeArtworkURL.map { "\($0)" },
+            continueRemainingText: continueRemainingText,
+            continueEpisodeText: continueEpisodeText,
+            continueEpisodeTitleText: continueEpisodeTitleText,
+            continueEpisodeArtworkURL: continueEpisodeArtworkURL,
             continueIsUpNext: continueIsUpNext,
-            continueUpNextBadgeText: continueUpNextBadgeText.map { "\($0)" },
+            continueUpNextBadgeText: continueUpNextBadgeText,
             showsWatchedBadge: showsWatchedBadge,
             isWatched: isWatched,
             shouldRequestInitialFocus: shouldRequestInitialFocus,
             externalFocusValue: externalFocusValue,
-            hasOnLongPress: onLongPress != nil,
             hasOnOpenDetails: onOpenDetails != nil,
             hasOnPlayManually: onPlayManually != nil,
             hasOnStartFromBeginning: onStartFromBeginning != nil,
-            hasOnRemoveFromContinueWatching: onRemoveFromContinueWatching != nil,
-            showPosterLabels: showPosterLabels,
-            smoothFocusAnimations: smoothFocusAnimations,
-            focusHighlighterEnabled: focusHighlighterEnabled,
-            allowsFocus: allowsFocus
+            hasOnRemoveFromContinueWatching: onRemoveFromContinueWatching != nil
         )
     }
 }
 
-// Home's vertical offset animates at the parent level. Without an equality
-// boundary, every parent focus update rebuilds the full poster subtree for
-// every mounted row, even though almost every card is unchanged. Keep dynamic
-// focus bindings inside the retained subtree while invalidating it only when a
-// value that affects the card's rendering or focus eligibility changes.
+// Home's rows rebuild this value with fresh closures on every focus move.
+// Comparing the static key lets `.equatable()` skip every card whose drawn
+// values did not change.
 extension PosterCard: Equatable {
     static func == (lhs: PosterCard, rhs: PosterCard) -> Bool {
         lhs.staticKey == rhs.staticKey
     }
 }
-
-#if os(tvOS)
-/// The static key plus every piece of card-owned state `posterContent` reads.
-/// Anything the content draws must appear here, or the gate will reuse a stale
-/// subtree when that value changes.
-struct PosterCardRenderKey: Equatable {
-    let base: PosterCardStaticKey
-    let isFocused: Bool
-    let landscapeArtworkPrepared: Bool
-    let landscapePreloadArmed: Bool
-    let cardCornerRadiusSetting: String
-    let liquidGlassCards: Bool
-    let trailersEnabled: Bool
-    let trailerDelay: Int
-    let isTrailerPreviewActive: Bool
-    let isTrailerPreviewReady: Bool
-    let didFinishTrailerPreview: Bool
-}
-
-/// Equality boundary that ignores its content closure. With `.equatable()`,
-/// SwiftUI compares `key` instead of structurally comparing the closure, so a
-/// parent update that changes nothing the card draws leaves the whole poster
-/// subtree (artwork, overlays, badges, trailer) untouched.
-struct PosterCardRenderGate<Content: View>: View, Equatable {
-    let key: PosterCardRenderKey
-    private let content: () -> Content
-
-    init(key: PosterCardRenderKey, @ViewBuilder content: @escaping () -> Content) {
-        self.key = key
-        self.content = content
-    }
-
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.key == rhs.key
-    }
-
-    var body: some View {
-        content()
-    }
-}
-#endif
 
 #if os(tvOS)
 final class TrailerPlayerLayerView: UIView {
@@ -1299,7 +873,6 @@ struct LoadingPosterCard: View {
     let width: CGFloat
     let height: CGFloat
     var cornerRadius: CGFloat = 16
-    var isLiquidGlassEnabled: Bool = true
 
     var body: some View {
         ZStack {
@@ -1310,45 +883,7 @@ struct LoadingPosterCard: View {
                 .tint(.white.opacity(0.55))
         }
         .frame(width: width, height: height)
-        .modifier(LiquidGlassCardModifier(
-            cornerRadius: cornerRadius,
-            isEnabled: isLiquidGlassEnabled
-        ))
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-    }
-}
-
-/// What a card shows when it has no artwork on screen.
-///
-/// Matches the Android app, where `AsyncImage` is given the same flat card
-/// painter for `placeholder`, `error` and `fallback`: loading and failed look
-/// identical, so a poster that never arrives is a quiet empty card rather than
-/// a spinner with no exit. An add-on that generates art on demand answers some
-/// titles in milliseconds and others never, and only the card knows which — a
-/// progress indicator promises an arrival nothing can guarantee.
-///
-/// A title with no artwork URL at all keeps the glyph, the same distinction
-/// Android draws with `MonochromePosterPlaceholder`.
-struct ArtworkPlaceholder: View {
-    let hasArtworkURL: Bool
-    let cornerRadius: CGFloat
-
-    var body: some View {
-        ZStack {
-            Color.clear
-
-            if !hasArtworkURL {
-                Image(systemName: "photo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 42, height: 42)
-                    .foregroundColor(.white.opacity(0.38))
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(Color.white.opacity(0.07))
-        )
+        .background(Color.white.opacity(0.07), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 
@@ -2127,17 +1662,6 @@ struct PosterCardButtonStyle: ButtonStyle {
 }
 
 #if os(tvOS)
-private extension View {
-    @ViewBuilder
-    func nuvioFocusEffectDisabledIfAvailable() -> some View {
-        if #available(tvOS 17.0, *) {
-            focusEffectDisabled()
-        } else {
-            self
-        }
-    }
-}
-
 /// Binds a view's focus to a shared `FocusState<String?>` (no-op when nil),
 /// so a parent can track/restore which card is focused.
 struct ExternalFocusBinding: ViewModifier {

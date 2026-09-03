@@ -768,7 +768,6 @@ private struct CollectionFolderHomeStyleRow: View {
     @State private var pendingLandscapeFocusedId: String?
     @State private var landscapeFocusTask: Task<Void, Never>?
     private let smoothFocus = true
-    @AppStorage(SettingsKey.focusHighlighter) private var focusHighlighter = false
     @AppStorage(SettingsKey.focusedPosterBackdropEnabled) private var focusedPosterBackdropEnabled = true
     @AppStorage(SettingsKey.focusedPosterBackdropDelay) private var focusedPosterBackdropDelay = 3
 
@@ -822,7 +821,6 @@ private struct CollectionFolderHomeStyleRow: View {
             let stripWidth = geo.size.width + edgeInset * 2
             let rowPosterLabels = showPosterLabels
             let rowSmoothFocus = smoothFocus
-            let rowFocusHighlighter = focusHighlighter
             let rowStep = 210.0
                 + 28.0
 
@@ -848,9 +846,6 @@ private struct CollectionFolderHomeStyleRow: View {
                         },
                         externalFocus: externalFocus,
                         externalFocusValue: cardKey,
-                        showPosterLabels: rowPosterLabels,
-                        smoothFocusAnimations: rowSmoothFocus,
-                        focusHighlighterEnabled: rowFocusHighlighter,
                         isWatched: isTitleWatched(item)
                     ) {
                         onSelect(item)
